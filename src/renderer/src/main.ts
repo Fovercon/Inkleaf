@@ -9,6 +9,7 @@ import { EditorPane } from './editor'
 import { renderPreview, handleLinkClick } from './preview'
 import { buildOutline, updateActiveHeading } from './outline'
 import { setupSync } from './syncScroll'
+import { setupLightbox } from './lightbox'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -321,6 +322,7 @@ async function boot() {
   setupFsWatch()
   setupDragDrop()
   handleLinkClick(previewPane, preview, (p) => void openFile(p))
+  setupLightbox(preview)
 
   setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)
   setupResizer($('#resizer-editor'), editorPane, 'editor', 240, 1400)

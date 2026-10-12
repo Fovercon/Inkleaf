@@ -126,8 +126,6 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
     if (/^https?:/i.test(src)) {
       img.loading = 'lazy'
       img.referrerPolicy = 'no-referrer'
-      img.classList.add('zoomable')
-      img.addEventListener('click', () => window.open(src, '_blank', 'noopener'))
       return
     }
     if (/^(data:|mdasset:)/i.test(src)) return
@@ -135,7 +133,14 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
     const clean = decodeURIComponent(src.split('?')[0].split('#')[0])
     const abs = `${baseDir}/${clean}`.replace(/\/{2,}/g, '/').replace(/\/$/, '')
     img.loading = 'lazy'
-    img.src = 'mdasset://' + encodeFilePath(abs)
+    // constant host keeps the URL parser from treating the leading path segment as a host
+    img.src = 'mdasset://local' + encodeFilePath(abs)
+  })
+
+  // hover tooltip with the target URL for external links
+  container.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
+    const href = a.getAttribute('href') ?? ''
+    if (/^https?:/i.test(href) && !a.title) a.title = href
   })
 
   await renderMermaidBlocks(container)

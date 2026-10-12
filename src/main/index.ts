@@ -114,12 +114,24 @@ async function createWindow() {
 
   if (process.env.MDR_TEST) {
     // give the renderer time to load the library, render markdown + mermaid, then capture proof
+    const round = process.env.MDR_ROUND ?? '0'
     setTimeout(async () => {
       try {
-        const img = await win.webContents.capturePage()
         const dir = path.join(process.cwd(), 'verify')
         fs.mkdirSync(dir, { recursive: true })
-        fs.writeFileSync(path.join(dir, 'round0.png'), img.toPNG())
+        const img = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}.png`), img.toPNG())
+        // exercise the image lightbox: click the first preview image, then capture again
+        await win.webContents.executeJavaScript(
+          `!!document.querySelector('#preview .md-preview img, #preview img')`,
+        )
+        await win.webContents.executeJavaScript(
+          `document.querySelector('#preview img')?.dispatchEvent(new MouseEvent('click', {bubbles: true}))`,
+        )
+        await new Promise((r) => setTimeout(r, 600))
+        const lb = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-lightbox.png`), lb.toPNG())
+        console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
         console.error('capture failed', err)
