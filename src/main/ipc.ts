@@ -144,6 +144,36 @@ export function registerIpc() {
     await fs.writeFile(p, Buffer.from(base64, 'base64'))
   })
 
+  ipcMain.handle('fs:rename', async (_e, oldPath: string, newPath: string) => {
+    if (fsSync.existsSync(newPath)) return { ok: false, error: '同名文件已存在' }
+    try {
+      await fs.rename(oldPath, newPath)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('fs:trash', (_e, p: string) => shell.trashItem(p))
+
+  ipcMain.handle('fs:mkdir', (_e, dir: string) => fs.mkdir(dir, { recursive: true }))
+
+  ipcMain.handle('fs:exists', (_e, p: string) => fsSync.existsSync(p))
+
+  ipcMain.handle('dialog:confirm', async (e, opts: { title: string; message: string; okLabel?: string }) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    if (!win) return false
+    const r = await dialog.showMessageBox(win, {
+      type: 'warning',
+      buttons: ['取消', opts.okLabel ?? '确定'],
+      defaultId: 1,
+      cancelId: 0,
+      title: opts.title,
+      message: opts.message,
+    })
+    return r.response === 1
+  })
+
   ipcMain.handle('shell:reveal', (_e, p: string) => {
     shell.showItemInFolder(p)
   })

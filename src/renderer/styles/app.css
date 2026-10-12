@@ -181,6 +181,40 @@ button {
 }
 #recent-list { display: none; flex: 1; overflow: auto; padding: 2px 8px 20px; min-height: 0; }
 #recent-list.visible { display: block; }
+
+/* tree filter box */
+#tree-filter { flex: none; padding: 0 12px 8px; }
+#tree-filter input {
+  width: 100%;
+  padding: 5px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+#tree-filter input:focus { border-color: var(--accent); }
+#tree-filter input::placeholder { color: var(--text-dim); }
+
+/* inline tree inputs (rename / create) */
+.tree-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 3px 7px;
+  border-radius: 5px;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  color: var(--text);
+  outline: none;
+}
+.tree-name .hl { color: var(--accent); font-weight: 700; }
+.ctx-sep { height: 1px; margin: 4px 8px; background: var(--border); }
+.ctx-item.danger { color: #d05050; }
+.ctx-item.danger:hover { background: rgba(208, 80, 80, 0.1); color: #d05050; }
 .recent-item {
   padding: 7px 10px;
   border-radius: 7px;

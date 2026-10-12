@@ -188,6 +188,11 @@ export class EditorPane {
     return this.path
   }
 
+  /** path changed underneath us (file renamed in the tree) */
+  setPath(p: string) {
+    this.path = p
+  }
+
   getContent(): string {
     return this.view?.state.doc.toString() ?? ''
   }

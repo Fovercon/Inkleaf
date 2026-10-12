@@ -169,6 +169,47 @@ async function createWindow() {
         await new Promise((r) => setTimeout(r, 700))
         const outlineShot = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-outline.png`), outlineShot.toPNG())
+        // file tree filter screenshot
+        await win.webContents.executeJavaScript(`
+          (() => { const i = document.getElementById('tree-filter-input'); i.value = '旅行'; i.dispatchEvent(new Event('input', {bubbles: true})) })()
+        `)
+        await new Promise((r) => setTimeout(r, 350))
+        const filterShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-filter.png`), filterShot.toPNG())
+        await win.webContents.executeJavaScript(`
+          (() => { const i = document.getElementById('tree-filter-input'); i.value = ''; i.dispatchEvent(new Event('input', {bubbles: true})) })()
+        `)
+        // rename e2e: context menu -> 重命名 -> inline input -> Enter
+        const libPath = path.resolve(process.cwd(), 'test-library')
+        const renameResult = await win.webContents.executeJavaScript(`
+          (async () => {
+            const folderRow = document.querySelector('.tree-row[data-path$="/笔记"]');
+            if (folderRow && !folderRow.querySelector('.disclosure')?.textContent?.includes('▾')) {
+              folderRow.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 250));
+            }
+            const row = document.querySelector('.tree-row[data-path$="旅行计划.md"]');
+            if (!row) return 'no-row';
+            row.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true, clientX: 120, clientY: 240}));
+            await new Promise(r => setTimeout(r, 200));
+            const item = [...document.querySelectorAll('.ctx-item')].find(b => b.textContent === '重命名');
+            if (!item) return 'no-menu-item';
+            item.click();
+            await new Promise(r => setTimeout(r, 250));
+            const input = document.querySelector('.tree-input');
+            if (!input) return 'no-input';
+            input.value = '旅行计划-备份.md';
+            input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            await new Promise(r => setTimeout(r, 900));
+            return document.querySelector('.tree-row[data-path$="旅行计划-备份.md"]') ? 'renamed-ok' : 'renamed-fail';
+          })()
+        `)
+        console.log(`[rename-check] ${renameResult}`)
+        // restore the original name via direct IPC (chokidar refreshes the tree)
+        await win.webContents.executeJavaScript(
+          `window.mdr.rename(${JSON.stringify(`${libPath}/笔记/旅行计划-备份.md`)}, ${JSON.stringify(`${libPath}/笔记/旅行计划.md`)})`,
+        )
+        await new Promise((r) => setTimeout(r, 800))
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {

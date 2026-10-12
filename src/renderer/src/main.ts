@@ -467,7 +467,55 @@ async function boot() {
   })
 
   tree.onOpenFile = (p) => void openFile(p)
-  tree.onNewFile = (dir) => void newFileAction(dir)
+  tree.onCreated = (p) => void openFile(p)
+  tree.onRenamed = ({ oldPath, newPath, isDir }) => {
+    const remap = (p: string | null): string | null => {
+      if (!p) return null
+      if (isDir) {
+        if (p.startsWith(oldPath + '/')) return newPath + p.slice(oldPath.length)
+        return null
+      }
+      return p === oldPath ? newPath : null
+    }
+    const cur = runtime.currentFile
+    const remapped = remap(cur)
+    if (cur && remapped) {
+      runtime.currentFile = remapped
+      editor.setPath(remapped)
+      session.lastFile = remapped
+      persistSession()
+      tree.markSelected(remapped)
+      const name = remapped.split('/').pop() ?? remapped
+      fileTitle.textContent = name
+      document.title = `${name} — Markdown Reader`
+      updateBreadcrumb()
+    }
+    // migrate recent list + remembered scroll positions
+    const s = getState()
+    s.recent = s.recent.map((p) => {
+      const r = isDir ? (p.startsWith(oldPath + '/') ? newPath + p.slice(oldPath.length) : p) : p === oldPath ? newPath : p
+      return r
+    })
+    const scroll: Record<string, number> = {}
+    for (const [k, v] of Object.entries(s.scrollByPath)) {
+      const r = isDir ? (k.startsWith(oldPath + '/') ? newPath + k.slice(oldPath.length) : k) : k === oldPath ? newPath : k
+      scroll[r] = v
+    }
+    s.scrollByPath = scroll
+    saveState()
+    if (s.sidebarTab === 'recent') renderRecent()
+  }
+  tree.onDeleted = (path) => {
+    const cur = runtime.currentFile
+    if (cur && (cur === path || cur.startsWith(path + '/'))) closeFile()
+    const s = getState()
+    s.recent = s.recent.filter((p) => p !== path && !p.startsWith(path + '/'))
+    saveState()
+    if (s.sidebarTab === 'recent') renderRecent()
+  }
+
+  const filterInput = $('#tree-filter-input') as HTMLInputElement
+  filterInput.addEventListener('input', () => tree.setFilter(filterInput.value))
 
   applyLayout()
   setSidebarTab(getState().sidebarTab)

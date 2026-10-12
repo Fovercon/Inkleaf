@@ -12,6 +12,13 @@ const api = {
   readFile: (p: string): Promise<string> => ipcRenderer.invoke('fs:read', p),
   writeFile: (p: string, content: string): Promise<void> => ipcRenderer.invoke('fs:write', p, content),
   writeBinary: (p: string, base64: string): Promise<void> => ipcRenderer.invoke('fs:writeBinary', p, base64),
+  rename: (oldPath: string, newPath: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke('fs:rename', oldPath, newPath),
+  trash: (p: string): Promise<void> => ipcRenderer.invoke('fs:trash', p),
+  mkdir: (p: string): Promise<void> => ipcRenderer.invoke('fs:mkdir', p),
+  exists: (p: string): Promise<boolean> => ipcRenderer.invoke('fs:exists', p),
+  confirm: (opts: { title: string; message: string; okLabel?: string }): Promise<boolean> =>
+    ipcRenderer.invoke('dialog:confirm', opts),
   reveal: (p: string): Promise<void> => ipcRenderer.invoke('shell:reveal', p),
   getSession: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('session:get'),
   setSession: (s: Record<string, unknown>): Promise<void> => ipcRenderer.invoke('session:set', s),
