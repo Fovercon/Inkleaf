@@ -16,6 +16,7 @@ const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 const sidebar = $('#sidebar')
 const editorPane = $('#editor-pane')
 const previewPane = $('#preview-pane')
+const previewScroll = $('#preview-scroll')
 const outlinePane = $('#outline-pane')
 const preview = $('#preview')
 const outlineNav = $('#outline')
@@ -24,6 +25,10 @@ const treeHost = $('#file-tree')
 const saveStateEl = $('#save-state')
 const emptyState = $('#empty-state')
 const fileTitle = $('#file-title')
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+}
 
 const editor = new EditorPane()
 const tree = new FileTree(treeHost)
@@ -115,15 +120,20 @@ async function openFileAction() {
 }
 
 let opening = false
-async function openFile(path: string) {
-  if (opening) return
+async function openFile(path: string): Promise<boolean> {
+  if (opening) return false
   opening = true
   try {
     let content: string
     try {
       content = await window.mdr.readFile(path)
     } catch {
-      return
+      // file no longer exists — drop it from recent list
+      const s = getState()
+      s.recent = s.recent.filter((x) => x !== path)
+      saveState()
+      renderRecent()
+      return false
     }
     runtime.currentFile = path
     session.lastFile = path
@@ -133,15 +143,18 @@ async function openFile(path: string) {
     const name = path.split('/').pop() ?? path
     fileTitle.textContent = name
     document.title = `${name} — Markdown Reader`
-    await renderPreview(previewPane, preview, content, path)
+    await renderPreview(previewScroll, preview, content, path)
     buildOutline(preview, outlineNav)
     updateActiveHeading(preview, outlineNav)
     const saved = getState().scrollByPath[path]
-    if (saved) previewPane.scrollTop = saved
+    if (saved) previewScroll.scrollTop = saved
     const s = getState()
     s.recent = [path, ...s.recent.filter((x) => x !== path)].slice(0, 10)
     saveState()
+    if (s.sidebarTab === 'recent') renderRecent()
+    updateBreadcrumb()
     applyLayout()
+    return true
   } finally {
     opening = false
   }
@@ -158,6 +171,7 @@ function closeFile() {
   fileTitle.textContent = ''
   document.title = 'Markdown Reader'
   saveStateEl.textContent = ''
+  updateBreadcrumb()
   applyLayout()
 }
 
@@ -173,6 +187,102 @@ async function newFileAction(dirOverride?: string) {
   await window.mdr.writeFile(p, '# 未命名\n\n')
   await tree.refresh()
   void openFile(p)
+}
+
+// ---------------- breadcrumb / recent / back-to-top ----------------
+
+function updateBreadcrumb() {
+  const bc = $('#breadcrumb')
+  const cur = runtime.currentFile
+  const root = runtime.libraryRoot
+  bc.innerHTML = ''
+  if (!cur) return
+  const rel = root && cur.startsWith(root + '/') ? cur.slice(root.length + 1) : cur
+  const segs = rel.split('/')
+  let acc = root ?? ''
+  segs.forEach((seg, i) => {
+    if (i < segs.length - 1) {
+      acc = acc ? `${acc}/${seg}` : seg
+      const btn = document.createElement('button')
+      btn.className = 'crumb'
+      btn.textContent = seg
+      btn.title = acc
+      btn.addEventListener('click', () => revealFolderInTree(acc))
+      bc.appendChild(btn)
+      const sep = document.createElement('span')
+      sep.className = 'crumb-sep'
+      sep.textContent = '/'
+      bc.appendChild(sep)
+    } else {
+      const curEl = document.createElement('span')
+      curEl.className = 'crumb cur'
+      curEl.textContent = seg
+      bc.appendChild(curEl)
+    }
+  })
+}
+
+function revealFolderInTree(folder: string) {
+  if (!runtime.libraryRoot) return
+  if (getState().collapsed.sidebar) togglePane('sidebar')
+  const rel = folder.slice(runtime.libraryRoot.length)
+  const parts = rel.split('/').filter(Boolean)
+  const set = new Set(getState().expandedDirs)
+  let acc = runtime.libraryRoot
+  for (const p of parts) {
+    acc = `${acc}/${p}`
+    set.add(acc)
+  }
+  getState().expandedDirs = [...set]
+  saveState()
+  setSidebarTab('files')
+  void tree.refresh().then(() => tree.flash(folder))
+}
+
+function setSidebarTab(tab: 'files' | 'recent') {
+  getState().sidebarTab = tab
+  saveState()
+  $('#tab-files').classList.toggle('active', tab === 'files')
+  $('#tab-recent').classList.toggle('active', tab === 'recent')
+  treeHost.style.display = tab === 'files' ? '' : 'none'
+  $('#recent-list').classList.toggle('visible', tab === 'recent')
+  if (tab === 'recent') renderRecent()
+}
+
+function renderRecent() {
+  const host = $('#recent-list')
+  host.innerHTML = ''
+  const rec = getState().recent
+  if (!rec.length) {
+    const empty = document.createElement('div')
+    empty.className = 'recent-empty'
+    empty.textContent = '暂无最近文件'
+    host.appendChild(empty)
+    return
+  }
+  const root = runtime.libraryRoot
+  rec.forEach((p) => {
+    const item = document.createElement('div')
+    item.className = 'recent-item'
+    const name = p.split('/').pop() ?? p
+    const dir =
+      root && p.startsWith(root + '/')
+        ? p.slice(root.length + 1, p.lastIndexOf('/')) || '（书库根目录）'
+        : p.slice(0, p.lastIndexOf('/'))
+    item.innerHTML = `<div class="ri-name">${escapeHtml(name)}</div><div class="ri-dir">${escapeHtml(dir)}</div>`
+    item.addEventListener('click', () => void openFile(p))
+    host.appendChild(item)
+  })
+}
+
+function setupBackToTop() {
+  const btn = $('#back-top')
+  previewScroll.addEventListener(
+    'scroll',
+    () => btn.classList.toggle('show', previewScroll.scrollTop > 500),
+    { passive: true },
+  )
+  btn.addEventListener('click', () => previewScroll.scrollTo({ top: 0, behavior: 'smooth' }))
 }
 
 // ---------------- wiring ----------------
@@ -256,7 +366,7 @@ function setupEditorCallbacks() {
   editor.onDocChanged = () => {
     if (renderTimer) clearTimeout(renderTimer)
     renderTimer = window.setTimeout(async () => {
-      await renderPreview(previewPane, preview, editor.getContent(), runtime.currentFile)
+      await renderPreview(previewScroll, preview, editor.getContent(), runtime.currentFile)
       buildOutline(preview, outlineNav)
     }, 250)
   }
@@ -264,20 +374,21 @@ function setupEditorCallbacks() {
 }
 
 function setupPreviewScroll() {
-  previewPane.addEventListener(
+  previewScroll.addEventListener(
     'scroll',
     () => {
       updateActiveHeading(preview, outlineNav)
       if (runtime.currentFile) {
         if (scrollSaveTimer) clearTimeout(scrollSaveTimer)
         scrollSaveTimer = window.setTimeout(() => {
-          getState().scrollByPath[runtime.currentFile!] = previewPane.scrollTop
+          getState().scrollByPath[runtime.currentFile!] = previewScroll.scrollTop
           saveState()
         }, 400)
       }
     },
     { passive: true },
   )
+  setupBackToTop()
 }
 
 let fsTimer: number | null = null
@@ -296,11 +407,11 @@ function setupFsWatch() {
         if (editor.isDirty()) return
         try {
           const content = await window.mdr.readFile(cur)
-          const scroll = previewPane.scrollTop
+          const scroll = previewScroll.scrollTop
           editor.openFile(cur, content)
-          await renderPreview(previewPane, preview, content, cur)
+          await renderPreview(previewScroll, preview, content, cur)
           buildOutline(preview, outlineNav)
-          previewPane.scrollTop = scroll
+          previewScroll.scrollTop = scroll
         } catch {
           /* file vanished */
         }
@@ -340,14 +451,17 @@ async function boot() {
   setupPreviewScroll()
   setupFsWatch()
   setupDragDrop()
-  handleLinkClick(previewPane, preview, (p) => void openFile(p))
+  handleLinkClick(previewScroll, preview, (p) => void openFile(p))
   setupLightbox(preview)
+
+  $('#tab-files').addEventListener('click', () => setSidebarTab('files'))
+  $('#tab-recent').addEventListener('click', () => setSidebarTab('recent'))
 
   setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)
   setupResizer($('#resizer-editor'), editorPane, 'editor', 240, 1400)
   setupResizer($('#resizer-outline'), outlinePane, 'outline', 160, 420)
 
-  setupSync(editor, previewPane, () => {
+  setupSync(editor, previewScroll, () => {
     const c = getState().collapsed
     return !c.editor && !c.preview
   })
@@ -356,6 +470,7 @@ async function boot() {
   tree.onNewFile = (dir) => void newFileAction(dir)
 
   applyLayout()
+  setSidebarTab(getState().sidebarTab)
 
   const q = new URLSearchParams(location.search)
   if (q.get('test')) {

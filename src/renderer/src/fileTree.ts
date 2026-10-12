@@ -60,6 +60,7 @@ export class FileTree {
 
       if (n.type === 'dir') {
         const isOpen = expanded.has(n.path)
+        row.dataset.path = n.path
         row.innerHTML =
           `<span class="disclosure">${isOpen ? '▾' : '▸'}</span>` +
           `<span class="tree-name folder">${escapeHtml(n.name)}</span>`
@@ -83,6 +84,7 @@ export class FileTree {
           }
         }
       } else {
+        row.dataset.path = n.path
         row.innerHTML =
           '<span class="disclosure"></span>' +
           `<span class="tree-name file">${escapeHtml(n.name)}</span>`
@@ -101,6 +103,16 @@ export class FileTree {
       ul.appendChild(li)
     }
     return ul
+  }
+
+  /** briefly highlight a folder/file row (used when the breadcrumb reveals it) */
+  flash(path: string) {
+    const row = this.host.querySelector<HTMLElement>(`.tree-row[data-path="${CSS.escape(path)}"]`)
+    if (!row) return
+    row.classList.remove('flash')
+    void row.offsetWidth // restart animation
+    row.classList.add('flash')
+    setTimeout(() => row.classList.remove('flash'), 1300)
   }
 
   private showMenu(e: MouseEvent, n: TreeNode) {

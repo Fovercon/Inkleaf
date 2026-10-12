@@ -8,6 +8,7 @@ export interface UiState {
   expandedDirs: string[]
   recent: string[]
   scrollByPath: Record<string, number>
+  sidebarTab: 'files' | 'recent'
 }
 
 const KEY = 'mdr.ui.v1'
@@ -19,6 +20,7 @@ const DEFAULTS: UiState = {
   expandedDirs: [],
   recent: [],
   scrollByPath: {},
+  sidebarTab: 'files',
 }
 
 function load(): UiState {
@@ -34,6 +36,7 @@ function load(): UiState {
       expandedDirs: p.expandedDirs ?? [],
       recent: p.recent ?? [],
       scrollByPath: p.scrollByPath ?? {},
+      sidebarTab: p.sidebarTab === 'recent' ? 'recent' : 'files',
     }
   } catch {
     return structuredClone(DEFAULTS)

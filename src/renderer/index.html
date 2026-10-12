@@ -26,13 +26,23 @@
 </header>
 <div id="workspace">
   <aside id="sidebar">
-    <div class="pane-header">书库</div>
+    <div class="sidebar-tabs">
+      <button id="tab-files" class="stab active">文件</button>
+      <button id="tab-recent" class="stab">最近</button>
+    </div>
     <div id="file-tree"></div>
+    <div id="recent-list"></div>
   </aside>
   <div class="resizer" id="resizer-sidebar"></div>
   <section id="editor-pane"><div id="editor-host"></div></section>
   <div class="resizer" id="resizer-editor"></div>
-  <section id="preview-pane"><div id="preview" class="md-preview"></div></section>
+  <section id="preview-pane">
+    <div id="breadcrumb"></div>
+    <div id="preview-scroll">
+      <div id="preview" class="md-preview"></div>
+    </div>
+    <button id="back-top" title="返回顶部">↑</button>
+  </section>
   <div class="resizer" id="resizer-outline"></div>
   <aside id="outline-pane">
     <div class="pane-header">大纲</div>

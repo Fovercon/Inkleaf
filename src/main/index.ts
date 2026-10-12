@@ -140,15 +140,35 @@ async function createWindow() {
           `document.querySelectorAll('#preview input[type=checkbox]:checked').length`,
         )
         await win.webContents.executeJavaScript(
-          `(() => { const cb = document.querySelector('#preview input[type=checkbox]:not(:checked)'); if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change', {bubbles: true})) } return !!cb })()`,
+          `(() => { const cb = document.querySelector('#preview input[type=checkbox]'); if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', {bubbles: true})) } return !!cb })()`,
         )
         await new Promise((r) => setTimeout(r, 1000))
         const after = await win.webContents.executeJavaScript(
           `document.querySelectorAll('#preview input[type=checkbox]:checked').length`,
         )
-        console.log(`[task-check] before=${before} after=${after} ${Number(after) === Number(before) + 1 ? 'OK' : 'FAIL'}`)
+        const toggled = Math.abs(Number(after) - Number(before)) === 1
+        // restore the fixture state we just toggled (wait out the 2s autosave debounce)
+        await win.webContents.executeJavaScript(
+          `(() => { const cb = document.querySelector('#preview input[type=checkbox]'); if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', {bubbles: true})) } })()`,
+        )
+        await new Promise((r) => setTimeout(r, 2600))
+        console.log(`[task-check] before=${before} after=${after} ${toggled ? 'OK' : 'FAIL'}`)
         const task = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-task.png`), task.toPNG())
+        // exercise the new navigation: recent-files tab and outline folding
+        await win.webContents.executeJavaScript(
+          `document.getElementById('tab-recent')?.click()`,
+        )
+        await new Promise((r) => setTimeout(r, 400))
+        const recent = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-recent.png`), recent.toPNG())
+        await win.webContents.executeJavaScript(`
+          document.getElementById('tab-files')?.click();
+          setTimeout(() => document.querySelector('.outline-item.has-children .ol-disc')?.click(), 200)
+        `)
+        await new Promise((r) => setTimeout(r, 700))
+        const outlineShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-outline.png`), outlineShot.toPNG())
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
