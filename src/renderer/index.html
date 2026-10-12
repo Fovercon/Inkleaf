@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' mdasset: data: blob: https:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<title>Markdown Reader</title>
+<link rel="stylesheet" href="./renderer.css" />
+</head>
+<body data-theme="light">
+<header id="titlebar">
+  <div id="toolbar">
+    <button id="btn-open-folder" title="打开文件夹 (⇧⌘O)" class="tb">📁</button>
+    <button id="btn-open-file" title="打开文件 (⌘O)" class="tb">📄</button>
+    <button id="btn-new-file" title="新建文件 (⌘N)" class="tb">＋</button>
+    <span class="tb-sep"></span>
+    <button id="btn-toggle-sidebar" title="书库栏 (⌘\)" class="tb">☰</button>
+    <button id="btn-toggle-editor" title="编辑面板 (⌘1)" class="tb">✎</button>
+    <button id="btn-toggle-preview" title="预览面板 (⌘2)" class="tb">▣</button>
+    <button id="btn-toggle-outline" title="大纲 (⌘3)" class="tb">≣</button>
+    <span class="tb-sep"></span>
+    <button id="btn-theme" title="切换主题（自动/浅色/深色）" class="tb">◐</button>
+    <div id="file-title"></div>
+  </div>
+  <div id="save-state"></div>
+</header>
+<div id="workspace">
+  <aside id="sidebar">
+    <div class="pane-header">书库</div>
+    <div id="file-tree"></div>
+  </aside>
+  <div class="resizer" id="resizer-sidebar"></div>
+  <section id="editor-pane"><div id="editor-host"></div></section>
+  <div class="resizer" id="resizer-editor"></div>
+  <section id="preview-pane"><div id="preview" class="md-preview"></div></section>
+  <div class="resizer" id="resizer-outline"></div>
+  <aside id="outline-pane">
+    <div class="pane-header">大纲</div>
+    <nav id="outline"></nav>
+  </aside>
+</div>
+<div id="empty-state">
+  <div class="empty-card">
+    <div class="empty-icon">📖</div>
+    <h1>Markdown Reader</h1>
+    <p>打开一个文件夹作为你的书库，或直接打开单个 Markdown 文件</p>
+    <div class="empty-actions">
+      <button id="empty-open-folder" class="primary">打开文件夹</button>
+      <button id="empty-open-file">打开文件</button>
+    </div>
+    <p class="empty-hint">也可以把文件夹或 .md 文件直接拖进窗口</p>
+  </div>
+</div>
+<script type="module" src="./renderer.js"></script>
+</body>
+</html>

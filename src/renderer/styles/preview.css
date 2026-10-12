@@ -1,0 +1,129 @@
+/* markdown preview typography (light + dark via body[data-theme]) */
+.md-preview {
+  max-width: 830px;
+  margin: 0 auto;
+  padding: 30px 40px 140px;
+  font-size: 15.5px;
+  line-height: 1.78;
+  color: var(--text);
+  word-wrap: break-word;
+}
+.md-preview:first-child { min-height: 100%; }
+
+.md-preview h1, .md-preview h2, .md-preview h3,
+.md-preview h4, .md-preview h5, .md-preview h6 {
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 1.5em 0 0.6em;
+  scroll-margin-top: 16px;
+}
+.md-preview h1:first-child, .md-preview h2:first-child { margin-top: 0.2em; }
+.md-preview h1 { font-size: 1.85em; padding-bottom: 0.35em; border-bottom: 1px solid var(--border); }
+.md-preview h2 { font-size: 1.45em; padding-bottom: 0.3em; border-bottom: 1px solid var(--border); }
+.md-preview h3 { font-size: 1.22em; }
+.md-preview h4 { font-size: 1.08em; }
+.md-preview h5 { font-size: 1em; }
+.md-preview h6 { font-size: 0.94em; color: var(--text-dim); }
+
+.md-preview p { margin: 0.75em 0; }
+
+.md-preview a { color: var(--accent); text-decoration: none; }
+.md-preview a:hover { text-decoration: underline; }
+
+.md-preview strong { font-weight: 700; }
+.md-preview del { color: var(--text-dim); }
+.md-preview mark { background: rgba(255, 212, 0, 0.35); padding: 0 3px; border-radius: 3px; }
+
+.md-preview ul, .md-preview ol { padding-left: 1.6em; margin: 0.6em 0; }
+.md-preview li { margin: 0.25em 0; }
+.md-preview li > input[type='checkbox'] {
+  margin-right: 0.45em;
+  accent-color: var(--accent);
+}
+.md-preview li:has(> input[type='checkbox']) { list-style: none; margin-left: -1.3em; }
+
+.md-preview blockquote {
+  margin: 1em 0;
+  padding: 0.2em 1em;
+  border-left: 4px solid var(--border-strong);
+  color: var(--text-dim);
+  background: var(--panel);
+  border-radius: 0 8px 8px 0;
+}
+.md-preview blockquote p { margin: 0.5em 0; }
+
+.md-preview code {
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.15em 0.45em;
+  border-radius: 5px;
+}
+.md-preview pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  overflow: auto;
+  margin: 1em 0;
+  line-height: 1.6;
+}
+.md-preview pre code {
+  background: none;
+  padding: 0;
+  font-size: 13px;
+}
+
+.md-preview table {
+  border-collapse: collapse;
+  margin: 1.2em 0;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 0.95em;
+}
+.md-preview th, .md-preview td {
+  border: 1px solid var(--border-strong);
+  padding: 7px 14px;
+}
+.md-preview th { background: var(--panel); font-weight: 600; }
+.md-preview tr:nth-child(2n) td { background: color-mix(in srgb, var(--panel) 45%, transparent); }
+
+.md-preview img {
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 0.4em 0;
+}
+.md-preview img.zoomable { cursor: zoom-in; }
+
+.md-preview hr {
+  border: none;
+  border-top: 1px solid var(--border-strong);
+  margin: 2em 0;
+}
+
+.md-preview .katex-display { overflow-x: auto; overflow-y: hidden; padding: 4px 0; }
+
+.md-preview .mermaid-block {
+  margin: 1.4em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+.md-preview .mermaid-block svg { max-width: 100%; height: auto; }
+.md-preview .mermaid-error {
+  border: 1px dashed #d05050;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: left;
+}
+.md-preview .mermaid-error-msg { color: #d05050; font-size: 13px; margin-bottom: 6px; }
+
+/* code highlight tokens (GitHub-inspired, light + dark) */
+.md-preview .hljs-keyword, .md-preview .hljs-selector-tag, .md-preview .hljs-meta { color: var(--hl-keyword); }
+.md-preview .hljs-string, .md-preview .hljs-regexp { color: var(--hl-string); }
+.md-preview .hljs-comment, .md-preview .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.md-preview .hljs-number, .md-preview .hljs-literal { color: var(--hl-number); }
+.md-preview .hljs-title, .md-preview .hljs-title.function_, .md-preview .hljs-section { color: var(--hl-title); }
+.md-preview .hljs-attr, .md-preview .hljs-variable, .md-preview .hljs-template-variable,
+.md-preview .hljs-type, .md-preview .hljs-selector-class { color: var(--hl-attr); }
+.md-preview .hljs-built_in, .md-preview .hljs-selector-id { color: var(--hl-title); }
