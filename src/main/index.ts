@@ -253,6 +253,31 @@ async function createWindow() {
         await win.webContents.executeJavaScript(
           `document.querySelector('.palette-input')?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))`,
         )
+        // export end-to-end: reopen README.md (has math/mermaid/image) and export to the system temp dir
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.tree-row[data-path$="README.md"]')?.click()`,
+        )
+        await new Promise((r) => setTimeout(r, 1200))
+        const tmpDir = app.getPath('temp')
+        const pdfPath = path.join(tmpDir, `mdr-round${round}-export.pdf`)
+        const htmlPath = path.join(tmpDir, `mdr-round${round}-export.html`)
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-export', {detail: ${JSON.stringify({ kind: 'pdf', path: pdfPath })}}))`,
+        )
+        await new Promise((r) => setTimeout(r, 7000))
+        const pdfOk = fs.existsSync(pdfPath) && fs.statSync(pdfPath).size > 20000
+        console.log(`[export-pdf] ${pdfOk ? 'OK' : 'FAIL'} size=${fs.existsSync(pdfPath) ? fs.statSync(pdfPath).size : 0}`)
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-export', {detail: ${JSON.stringify({ kind: 'html', path: htmlPath })}}))`,
+        )
+        await new Promise((r) => setTimeout(r, 2500))
+        const htmlOk = fs.existsSync(htmlPath) && fs.statSync(htmlPath).size > 10000
+        const htmlText = htmlOk ? fs.readFileSync(htmlPath, 'utf8') : ''
+        const htmlEmbedded =
+          htmlText.includes('data:application/octet-stream') ||
+          htmlText.includes('data:font/') ||
+          htmlText.includes('data:image/')
+        console.log(`[export-html] ${htmlOk ? 'OK' : 'FAIL'} size=${fs.existsSync(htmlPath) ? fs.statSync(htmlPath).size : 0} embedded=${htmlEmbedded}`)
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
@@ -282,6 +307,9 @@ function buildMenu() {
         { label: '在书库中搜索…', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('search') },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
+        { type: 'separator' },
+        { label: '导出为 PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: () => send('export-pdf') },
+        { label: '导出为 HTML…', accelerator: 'CmdOrCtrl+Shift+H', click: () => send('export-html') },
         { type: 'separator' },
         { role: 'close', label: '关闭窗口' },
       ],

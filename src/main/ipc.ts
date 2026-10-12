@@ -229,6 +229,39 @@ export function registerIpc() {
     return r.response === 1
   })
 
+  ipcMain.handle('export:savePath', async (e, defaultName: string, ext: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const options = {
+      title: '导出',
+      defaultPath: defaultName,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
+    }
+    const r = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options)
+    return r.canceled ? null : r.filePath
+  })
+
+  ipcMain.handle('export:pdf', async (_e, html: string, target: string) => {
+    const tmp = path.join(app.getPath('temp'), `mdr-export-${Date.now()}.html`)
+    await fs.writeFile(tmp, html, 'utf8')
+    const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
+    try {
+      await win.loadFile(tmp)
+      await new Promise((r) => setTimeout(r, 500)) // let embedded fonts/images settle
+      const buf = await win.webContents.printToPDF({
+        printBackground: true,
+        pageSize: 'A4',
+        margins: { top: 0.7, bottom: 0.7, left: 0.6, right: 0.6 },
+      })
+      await fs.writeFile(target, buf)
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    } finally {
+      win.destroy()
+      await fs.unlink(tmp).catch(() => {})
+    }
+  })
+
   ipcMain.handle('shell:reveal', (_e, p: string) => {
     shell.showItemInFolder(p)
   })

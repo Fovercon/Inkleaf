@@ -11,6 +11,7 @@ import { buildOutline, updateActiveHeading } from './outline'
 import { setupSync } from './syncScroll'
 import { setupLightbox } from './lightbox'
 import { openPalette } from './commandPalette'
+import { buildStandaloneHtml } from './export'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -314,6 +315,37 @@ function openPaletteFor(mode: 'files' | 'search') {
   openPalette(mode, paletteOpts())
 }
 
+async function exportTo(kind: 'pdf' | 'html', target: string) {
+  console.log('[export] start', kind, target, 'file:', runtime.currentFile)
+  if (!runtime.currentFile) return
+  try {
+    const name = (runtime.currentFile.split('/').pop() ?? 'export').replace(/\.(md|markdown|mdx)$/i, '')
+    const html = await buildStandaloneHtml(preview, name)
+    console.log('[export] html built, length:', html.length)
+    if (kind === 'html') {
+      await window.mdr.writeFile(target, html)
+      console.log('[export] html written')
+      window.mdr.reveal(target)
+    } else {
+      const r = await window.mdr.exportPdf(html, target)
+      console.log('[export] pdf result:', JSON.stringify(r))
+      if (r.ok) window.mdr.reveal(target)
+      else void window.mdr.confirm({ title: '导出失败', message: r.error ?? '未知错误', okLabel: '知道了' })
+    }
+  } catch (err) {
+    console.error('[export] error', err)
+  }
+}
+
+async function exportCurrent(kind: 'pdf' | 'html') {
+  if (!runtime.currentFile) return
+  const name = (runtime.currentFile.split('/').pop() ?? 'export').replace(/\.(md|markdown|mdx)$/i, '')
+  const ext = kind === 'pdf' ? 'pdf' : 'html'
+  const target = await window.mdr.saveExportPath(`${name}.${ext}`, ext)
+  if (!target) return
+  await exportTo(kind, target)
+}
+
 function setupActions() {
   $('#btn-open-folder').addEventListener('click', () => void openFolderAction())
   $('#btn-open-file').addEventListener('click', () => void openFileAction())
@@ -381,6 +413,12 @@ function setupActions() {
         break
       case 'search':
         openPaletteFor('search')
+        break
+      case 'export-pdf':
+        void exportCurrent('pdf')
+        break
+      case 'export-html':
+        void exportCurrent('html')
         break
     }
   })
@@ -493,6 +531,10 @@ async function boot() {
   // test hook: lets the automated harness open the palette without native menu accelerators
   document.addEventListener('mdr-test-palette', (e) => {
     openPaletteFor((e as CustomEvent).detail?.mode === 'search' ? 'search' : 'files')
+  })
+  // test hook: export to a fixed path, bypassing the save dialog
+  document.addEventListener('mdr-test-export', (e) => {
+    void exportTo((e as CustomEvent).detail?.kind === 'html' ? 'html' : 'pdf', (e as CustomEvent).detail?.path ?? '')
   })
 
   setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)
