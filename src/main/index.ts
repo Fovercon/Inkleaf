@@ -210,6 +210,49 @@ async function createWindow() {
           `window.mdr.rename(${JSON.stringify(`${libPath}/笔记/旅行计划-备份.md`)}, ${JSON.stringify(`${libPath}/笔记/旅行计划.md`)})`,
         )
         await new Promise((r) => setTimeout(r, 800))
+        // quick switcher (⌘P): fuzzy filename search + Enter to open
+        const paletteResult = await win.webContents.executeJavaScript(`
+          (async () => {
+            document.dispatchEvent(new CustomEvent('mdr-test-palette', {detail: {mode: 'files'}}));
+            await new Promise(r => setTimeout(r, 400));
+            const input = document.querySelector('.palette-input');
+            if (!input) return 'no-input';
+            input.value = '旅行';
+            input.dispatchEvent(new Event('input', {bubbles: true}));
+            await new Promise(r => setTimeout(r, 450));
+            const row = document.querySelector('.pal-row');
+            if (!row) return 'no-results';
+            return row.querySelector('.pal-name')?.textContent ?? 'no-name';
+          })()
+        `)
+        console.log(`[palette-check] top-result=${paletteResult}`)
+        const paletteShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-palette.png`), paletteShot.toPNG())
+        const paletteOpen = await win.webContents.executeJavaScript(`
+          (async () => {
+            document.querySelector('.palette-input')?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+            await new Promise(r => setTimeout(r, 700));
+            return document.getElementById('file-title')?.textContent;
+          })()
+        `)
+        console.log(`[palette-open] opened=${paletteOpen}`)
+        // full-text search (⇧⌘F)
+        await win.webContents.executeJavaScript(`
+          (() => {
+            document.dispatchEvent(new CustomEvent('mdr-test-palette', {detail: {mode: 'search'}}));
+            setTimeout(() => {
+              const input = document.querySelector('.palette-input');
+              if (input) { input.value = '预算'; input.dispatchEvent(new Event('input', {bubbles: true})) }
+            }, 350);
+            return true
+          })()
+        `)
+        await new Promise((r) => setTimeout(r, 900))
+        const searchShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-search.png`), searchShot.toPNG())
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.palette-input')?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))`,
+        )
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
@@ -234,6 +277,9 @@ function buildMenu() {
         { label: '打开文件…', accelerator: 'CmdOrCtrl+O', click: () => send('open-file') },
         { label: '打开文件夹…', accelerator: 'CmdOrCtrl+Shift+O', click: () => send('open-folder') },
         { label: '新建文件', accelerator: 'CmdOrCtrl+N', click: () => send('new-file') },
+        { type: 'separator' },
+        { label: '快速切换文件…', accelerator: 'CmdOrCtrl+P', click: () => send('quick-switch') },
+        { label: '在书库中搜索…', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('search') },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { type: 'separator' },

@@ -8,6 +8,9 @@ const api = {
   openLibrary: (root: string): Promise<import('../main/ipc').TreeNode[] | null> =>
     ipcRenderer.invoke('lib:open', root),
   readTree: (): Promise<import('../main/ipc').TreeNode[]> => ipcRenderer.invoke('lib:tree'),
+  listFiles: (): Promise<string[]> => ipcRenderer.invoke('lib:listFiles'),
+  searchText: (query: string): Promise<{ path: string; line: number; text: string }[]> =>
+    ipcRenderer.invoke('search:text', query),
   closeLibrary: (): Promise<void> => ipcRenderer.invoke('lib:close'),
   readFile: (p: string): Promise<string> => ipcRenderer.invoke('fs:read', p),
   writeFile: (p: string, content: string): Promise<void> => ipcRenderer.invoke('fs:write', p, content),

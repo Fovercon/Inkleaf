@@ -10,6 +10,7 @@ import { renderPreview, handleLinkClick, setTaskToggleHandler } from './preview'
 import { buildOutline, updateActiveHeading } from './outline'
 import { setupSync } from './syncScroll'
 import { setupLightbox } from './lightbox'
+import { openPalette } from './commandPalette'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -120,7 +121,7 @@ async function openFileAction() {
 }
 
 let opening = false
-async function openFile(path: string): Promise<boolean> {
+async function openFile(path: string, opts?: { line?: number }): Promise<boolean> {
   if (opening) return false
   opening = true
   try {
@@ -147,7 +148,11 @@ async function openFile(path: string): Promise<boolean> {
     buildOutline(preview, outlineNav)
     updateActiveHeading(preview, outlineNav)
     const saved = getState().scrollByPath[path]
-    if (saved) previewScroll.scrollTop = saved
+    if (opts?.line) {
+      jumpToLine(opts.line)
+    } else if (saved) {
+      previewScroll.scrollTop = saved
+    }
     const s = getState()
     s.recent = [path, ...s.recent.filter((x) => x !== path)].slice(0, 10)
     saveState()
@@ -287,6 +292,28 @@ function setupBackToTop() {
 
 // ---------------- wiring ----------------
 
+function jumpToLine(line: number) {
+  const els = Array.from(preview.querySelectorAll<HTMLElement>('[data-source-line]'))
+  const el = els.find((e) => Number(e.dataset.sourceLine) >= line)
+  el?.scrollIntoView({ block: 'start' })
+  editor.scrollToLine(line)
+}
+
+function paletteOpts() {
+  return {
+    listFiles: () => window.mdr.listFiles(),
+    searchText: (q: string) => window.mdr.searchText(q),
+    recent: () => getState().recent,
+    libraryRoot: () => runtime.libraryRoot,
+    onOpenFile: (p: string, line?: number) => void openFile(p, { line }),
+  }
+}
+
+function openPaletteFor(mode: 'files' | 'search') {
+  if (!runtime.libraryRoot) return
+  openPalette(mode, paletteOpts())
+}
+
 function setupActions() {
   $('#btn-open-folder').addEventListener('click', () => void openFolderAction())
   $('#btn-open-file').addEventListener('click', () => void openFileAction())
@@ -348,6 +375,12 @@ function setupActions() {
         break
       case 'fmt-link':
         editor.insertLink()
+        break
+      case 'quick-switch':
+        openPaletteFor('files')
+        break
+      case 'search':
+        openPaletteFor('search')
         break
     }
   })
@@ -456,6 +489,11 @@ async function boot() {
 
   $('#tab-files').addEventListener('click', () => setSidebarTab('files'))
   $('#tab-recent').addEventListener('click', () => setSidebarTab('recent'))
+
+  // test hook: lets the automated harness open the palette without native menu accelerators
+  document.addEventListener('mdr-test-palette', (e) => {
+    openPaletteFor((e as CustomEvent).detail?.mode === 'search' ? 'search' : 'files')
+  })
 
   setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)
   setupResizer($('#resizer-editor'), editorPane, 'editor', 240, 1400)

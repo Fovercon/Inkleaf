@@ -13,6 +13,8 @@ export interface TreeNode {
 
 let libraryRoot: string | null = null
 let watcher: chokidar.FSWatcher | null = null
+/** cached flat .md file list for the quick switcher; invalidated on fs events */
+let fileListCache: { root: string; files: string[] } | null = null
 
 export const getLibraryRoot = () => libraryRoot
 
@@ -73,7 +75,10 @@ async function startWatch(root: string) {
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 60 },
   })
-  const emit = (event: string) => (p: string) => broadcast('fs:event', { event, path: p })
+  const emit = (event: string) => (p: string) => {
+    fileListCache = null
+    broadcast('fs:event', { event, path: p })
+  }
   watcher.on('add', emit('add')).on('unlink', emit('unlink')).on('change', emit('change'))
     .on('addDir', emit('addDir')).on('unlinkDir', emit('unlinkDir'))
 }
@@ -123,6 +128,56 @@ export function registerIpc() {
   })
 
   ipcMain.handle('lib:tree', () => (libraryRoot ? readTree(libraryRoot) : []))
+
+  async function listFiles(): Promise<string[]> {
+    const root = libraryRoot
+    if (!root) return []
+    if (fileListCache && fileListCache.root === root) return fileListCache.files
+    const files: string[] = []
+    const walk = async (dir: string) => {
+      let entries: fsSync.Dirent[]
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const e of entries) {
+        if (e.name.startsWith('.') || e.name === 'node_modules') continue
+        const p = path.join(dir, e.name)
+        if (e.isDirectory()) await walk(p)
+        else if (e.isFile() && /\.(md|markdown|mdx)$/i.test(e.name)) files.push(p)
+      }
+    }
+    await walk(root)
+    fileListCache = { root, files }
+    return files
+  }
+
+  ipcMain.handle('lib:listFiles', () => listFiles())
+
+  ipcMain.handle('search:text', async (_e, query: string) => {
+    const root = libraryRoot
+    if (!root || !query.trim()) return []
+    const ql = query.toLowerCase()
+    const files = await listFiles()
+    const results: { path: string; line: number; text: string }[] = []
+    for (const f of files) {
+      if (results.length >= 300) break
+      try {
+        const lines = (await fs.readFile(f, 'utf8')).split('\n')
+        let count = 0
+        for (let i = 0; i < lines.length && count < 20; i++) {
+          if (lines[i].toLowerCase().includes(ql)) {
+            results.push({ path: f, line: i + 1, text: lines[i].trim().slice(0, 160) })
+            count++
+          }
+        }
+      } catch {
+        /* unreadable file — skip */
+      }
+    }
+    return results
+  })
 
   ipcMain.handle('lib:close', async () => {
     await stopWatch()
