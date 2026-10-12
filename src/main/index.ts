@@ -131,6 +131,24 @@ async function createWindow() {
         await new Promise((r) => setTimeout(r, 600))
         const lb = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-lightbox.png`), lb.toPNG())
+        // verify task checkbox write-back: close lightbox, click an unchecked box, re-render should check it
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape'}))`,
+        )
+        await new Promise((r) => setTimeout(r, 250))
+        const before = await win.webContents.executeJavaScript(
+          `document.querySelectorAll('#preview input[type=checkbox]:checked').length`,
+        )
+        await win.webContents.executeJavaScript(
+          `(() => { const cb = document.querySelector('#preview input[type=checkbox]:not(:checked)'); if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change', {bubbles: true})) } return !!cb })()`,
+        )
+        await new Promise((r) => setTimeout(r, 1000))
+        const after = await win.webContents.executeJavaScript(
+          `document.querySelectorAll('#preview input[type=checkbox]:checked').length`,
+        )
+        console.log(`[task-check] before=${before} after=${after} ${Number(after) === Number(before) + 1 ? 'OK' : 'FAIL'}`)
+        const task = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-task.png`), task.toPNG())
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
@@ -163,6 +181,17 @@ function buildMenu() {
     },
     // native edit menu supplies Cmd+C/V/X/Z/A to the editor
     { role: 'editMenu' },
+    {
+      label: '格式',
+      submenu: [
+        { label: '加粗', accelerator: 'CmdOrCtrl+B', click: () => send('fmt-bold') },
+        { label: '斜体', accelerator: 'CmdOrCtrl+I', click: () => send('fmt-italic') },
+        { label: '行内代码', accelerator: 'CmdOrCtrl+E', click: () => send('fmt-code') },
+        { type: 'separator' },
+        { label: '代码块', accelerator: 'CmdOrCtrl+Shift+K', click: () => send('fmt-codeblock') },
+        { label: '链接', accelerator: 'CmdOrCtrl+K', click: () => send('fmt-link') },
+      ],
+    },
     {
       label: '视图',
       submenu: [

@@ -1,11 +1,112 @@
 import { basicSetup } from 'codemirror'
-import { EditorView } from '@codemirror/view'
+import { EditorView, keymap } from '@codemirror/view'
 import { Compartment, EditorState } from '@codemirror/state'
+import { indentMore, indentLess } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
 
 const AUTOSAVE_DELAY = 2000
+
+// ---------- markdown formatting commands (Typora-style shortcuts) ----------
+
+function toggleWrap(view: EditorView, mark: string, closeMark = mark): boolean {
+  const { state } = view
+  const { from, to } = state.selection.main
+  const selected = state.sliceDoc(from, to)
+
+  // unwrap: markers directly around the selection
+  if (
+    from >= mark.length &&
+    state.sliceDoc(from - mark.length, from) === mark &&
+    state.sliceDoc(to, to + closeMark.length) === closeMark
+  ) {
+    view.dispatch({
+      changes: [
+        { from: from - mark.length, to: from },
+        { from: to, to: to + closeMark.length },
+      ],
+      selection: { anchor: from - mark.length, head: to - mark.length },
+      scrollIntoView: true,
+    })
+    return true
+  }
+  // unwrap: selection itself carries the markers
+  if (
+    selected.length >= mark.length + closeMark.length &&
+    selected.startsWith(mark) &&
+    selected.endsWith(closeMark)
+  ) {
+    view.dispatch({
+      changes: { from, to, insert: selected.slice(mark.length, selected.length - closeMark.length) },
+      selection: { anchor: from, head: to - mark.length - closeMark.length },
+    })
+    return true
+  }
+  // wrap
+  view.dispatch({
+    changes: { from, to, insert: mark + selected + closeMark },
+    selection: selected
+      ? { anchor: from + mark.length, head: to + mark.length }
+      : { anchor: from + mark.length },
+  })
+  return true
+}
+
+function toggleCodeBlock(view: EditorView): boolean {
+  const { state } = view
+  const { from, to } = state.selection.main
+  const first = state.doc.lineAt(from)
+  const last = state.doc.lineAt(to)
+  const text = state.sliceDoc(first.from, last.to)
+
+  if (text.startsWith('```') && text.includes('\n') && text.trimEnd().endsWith('```')) {
+    const inner = text.replace(/^```[^\n]*\n/, '').replace(/\n```\s*$/, '')
+    view.dispatch({ changes: { from: first.from, to: last.to, insert: inner } })
+    return true
+  }
+  view.dispatch({
+    changes: { from: first.from, to: last.to, insert: '```\n' + text + '\n```' },
+    selection: { anchor: first.from + 3 },
+  })
+  return true
+}
+
+function insertLink(view: EditorView): boolean {
+  const { state } = view
+  const { from, to } = state.selection.main
+  const sel = state.sliceDoc(from, to)
+
+  if (sel.startsWith('[') && sel.endsWith(')')) {
+    const m = /^\[([^\]]*)\]\((.*)\)$/.exec(sel)
+    if (m) {
+      view.dispatch({
+        changes: { from, to, insert: m[1] },
+        selection: { anchor: from, head: from + m[1].length },
+      })
+      return true
+    }
+  }
+  const label = sel || '链接文字'
+  view.dispatch({
+    changes: { from, to, insert: `[${label}](url)` },
+    selection: sel
+      ? { anchor: from + label.length + 3, head: from + label.length + 6 }
+      : { anchor: from + 1, head: from + 1 + label.length },
+  })
+  return true
+}
+
+async function fileToBase64(file: File): Promise<string> {
+  const buf = new Uint8Array(await file.arrayBuffer())
+  const chunks: string[] = []
+  for (let i = 0; i < buf.length; i += 0x8000) {
+    chunks.push(String.fromCharCode(...buf.subarray(i, i + 0x8000)))
+  }
+  return btoa(chunks.join(''))
+}
+
+// ---------- editor pane ----------
 
 export class EditorPane {
   view: EditorView | null = null
@@ -18,6 +119,7 @@ export class EditorPane {
 
   onDirtyChange: ((dirty: boolean) => void) | null = null
   onDocChanged: (() => void) | null = null
+  onStatsChange: ((stats: string) => void) | null = null
 
   mount(host: HTMLElement, dark: boolean) {
     this.view = new EditorView({
@@ -29,12 +131,33 @@ export class EditorPane {
           markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
           EditorView.lineWrapping,
           this.themeComp.of(dark ? oneDark : []),
+          // list nesting / selection indent (after basicSetup so it takes precedence)
+          keymap.of([
+            { key: 'Tab', run: indentMore, shift: indentLess },
+          ]),
+          EditorView.domEventHandlers({
+            paste: (event) => {
+              const items = event.clipboardData?.items
+              if (!items) return false
+              for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                  const file = item.getAsFile()
+                  if (!file) continue
+                  event.preventDefault()
+                  void this.savePastedImage(file)
+                  return true
+                }
+              }
+              return false
+            },
+          }),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) {
               this.setDirty(true)
               this.onDocChanged?.()
               this.scheduleSave()
             }
+            if (u.docChanged || u.selectionSet) this.reportStats()
           }),
         ],
       }),
@@ -50,6 +173,7 @@ export class EditorPane {
     this.cancelSave()
     this.setDirty(false)
     this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: content } })
+    this.reportStats()
   }
 
   clear() {
@@ -57,6 +181,7 @@ export class EditorPane {
     this.cancelSave()
     this.setDirty(false)
     this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: '' } })
+    this.onStatsChange?.('')
   }
 
   get currentPath() {
@@ -75,6 +200,71 @@ export class EditorPane {
     if (this.dirty === d) return
     this.dirty = d
     this.onDirtyChange?.(d)
+  }
+
+  // ---- formatting actions (menu + shortcut entry points) ----
+  toggleBold() {
+    this.view && toggleWrap(this.view, '**')
+    this.focus()
+  }
+  toggleItalic() {
+    this.view && toggleWrap(this.view, '*')
+    this.focus()
+  }
+  toggleInlineCode() {
+    this.view && toggleWrap(this.view, '`')
+    this.focus()
+  }
+  toggleCodeBlock() {
+    this.view && toggleCodeBlock(this.view!)
+    this.focus()
+  }
+  insertLink() {
+    this.view && insertLink(this.view!)
+    this.focus()
+  }
+
+  /** toggle a `- [ ]` / `- [x]` marker on the given 1-based source line */
+  toggleTaskAtLine(n: number, checked: boolean) {
+    const v = this.view
+    if (!v || n < 1 || n > v.state.doc.lines) return
+    const line = v.state.doc.line(n)
+    const text = v.state.sliceDoc(line.from, line.to)
+    const updated = checked ? text.replace(/\[[ ]?\]/, '[x]') : text.replace(/\[[xX]\]/, '[ ]')
+    if (updated !== text) v.dispatch({ changes: { from: line.from, to: line.to, insert: updated } })
+  }
+
+  private async savePastedImage(file: File) {
+    const v = this.view
+    if (!v || !this.path) return
+    const dir = this.path.slice(0, this.path.lastIndexOf('/'))
+    const ext = (file.type.split('/')[1] ?? 'png').replace('jpeg', 'jpg')
+    const now = new Date()
+    const pad = (n: number) => String(n).padStart(2, '0')
+    const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    const rel = `assets/paste-${stamp}.${ext}`
+    try {
+      const base64 = await fileToBase64(file)
+      await window.mdr.writeBinary(`${dir}/${rel}`, base64)
+    } catch (err) {
+      console.error('paste image save failed', err)
+      return
+    }
+    const pos = v.state.selection.main
+    v.dispatch({ changes: { from: pos.from, to: pos.to, insert: `![](${encodeURI(rel)})` } })
+  }
+
+  private reportStats() {
+    const v = this.view
+    if (!v) return
+    if (!this.path) {
+      this.onStatsChange?.('')
+      return
+    }
+    const sel = v.state.selection.main
+    const line = v.state.doc.lineAt(sel.head)
+    const chars = v.state.doc.toString().replace(/\s/g, '').length
+    this.onStatsChange?.(`${chars} 字 · ${line.number}:${sel.head - line.from + 1}`)
   }
 
   private cancelSave() {

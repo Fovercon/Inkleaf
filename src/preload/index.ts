@@ -11,6 +11,7 @@ const api = {
   closeLibrary: (): Promise<void> => ipcRenderer.invoke('lib:close'),
   readFile: (p: string): Promise<string> => ipcRenderer.invoke('fs:read', p),
   writeFile: (p: string, content: string): Promise<void> => ipcRenderer.invoke('fs:write', p, content),
+  writeBinary: (p: string, base64: string): Promise<void> => ipcRenderer.invoke('fs:writeBinary', p, base64),
   reveal: (p: string): Promise<void> => ipcRenderer.invoke('shell:reveal', p),
   getSession: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('session:get'),
   setSession: (s: Record<string, unknown>): Promise<void> => ipcRenderer.invoke('session:set', s),

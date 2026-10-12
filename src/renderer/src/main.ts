@@ -6,7 +6,7 @@ import { getState, saveState, runtime, PaneKey } from './state'
 import { applyTheme, setTheme, cycleTheme, onThemeChange, currentTheme } from './theme'
 import { FileTree } from './fileTree'
 import { EditorPane } from './editor'
-import { renderPreview, handleLinkClick } from './preview'
+import { renderPreview, handleLinkClick, setTaskToggleHandler } from './preview'
 import { buildOutline, updateActiveHeading } from './outline'
 import { setupSync } from './syncScroll'
 import { setupLightbox } from './lightbox'
@@ -224,6 +224,21 @@ function setupActions() {
       case 'theme-auto':
         setTheme('auto')
         break
+      case 'fmt-bold':
+        editor.toggleBold()
+        break
+      case 'fmt-italic':
+        editor.toggleItalic()
+        break
+      case 'fmt-code':
+        editor.toggleInlineCode()
+        break
+      case 'fmt-codeblock':
+        editor.toggleCodeBlock()
+        break
+      case 'fmt-link':
+        editor.insertLink()
+        break
     }
   })
 }
@@ -235,6 +250,9 @@ function setupEditorCallbacks() {
     const name = runtime.currentFile?.split('/').pop() ?? ''
     document.title = `${d ? '● ' : ''}${name} — Markdown Reader`
   }
+  editor.onStatsChange = (s) => {
+    $('#editor-stats').textContent = s
+  }
   editor.onDocChanged = () => {
     if (renderTimer) clearTimeout(renderTimer)
     renderTimer = window.setTimeout(async () => {
@@ -242,6 +260,7 @@ function setupEditorCallbacks() {
       buildOutline(preview, outlineNav)
     }, 250)
   }
+  setTaskToggleHandler((line, checked) => editor.toggleTaskAtLine(line, checked))
 }
 
 function setupPreviewScroll() {

@@ -21,7 +21,7 @@ const md: MarkdownIt = new MarkdownIt({
 })
 
 md.use(katexPlugin as never)
-md.use(taskLists as never, { label: true })
+md.use(taskLists as never, { enabled: true, label: true })
 
 // tag block tokens with their source line so the preview can scroll-sync with the editor
 md.core.ruler.push('mdr_source_line', (state) => {
@@ -63,6 +63,12 @@ interface LastRender {
 
 let last: LastRender | null = null
 let renderSeq = 0
+
+// preview task checkbox -> editor source line write-back
+let taskToggleHandler: ((line: number, checked: boolean) => void) | null = null
+export function setTaskToggleHandler(fn: (line: number, checked: boolean) => void) {
+  taskToggleHandler = fn
+}
 
 function encodeFilePath(abs: string): string {
   return abs.split('/').map(encodeURIComponent).join('/')
@@ -115,7 +121,7 @@ async function renderMermaidBlocks(container: HTMLElement) {
 export async function renderPreview(scroller: HTMLElement, container: HTMLElement, text: string, filePath: string | null) {
   const seq = ++renderSeq
   const html = DOMPurify.sanitize(md.render(text), {
-    ADD_ATTR: ['target', 'data-source-line', 'id'],
+    ADD_ATTR: ['target', 'data-source-line', 'id', 'checked', 'disabled'],
   })
   if (seq !== renderSeq) return // superseded by a newer render
   container.innerHTML = html
@@ -141,6 +147,15 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
   container.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
     const href = a.getAttribute('href') ?? ''
     if (/^https?:/i.test(href) && !a.title) a.title = href
+  })
+
+  // task list checkboxes toggle the source line and write back through the editor
+  container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const li = cb.closest('li') as HTMLElement | null
+      const line = Number(li?.dataset.sourceLine ?? 0)
+      if (line > 0 && taskToggleHandler) taskToggleHandler(line, cb.checked)
+    })
   })
 
   await renderMermaidBlocks(container)

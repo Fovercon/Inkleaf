@@ -119,6 +119,14 @@ button {
   -webkit-app-region: no-drag;
 }
 #save-state.dirty { color: #e0a020; font-weight: 600; }
+#editor-stats {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-dim);
+  -webkit-app-region: no-drag;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 
 /* ---------- workspace layout ---------- */
 #workspace {

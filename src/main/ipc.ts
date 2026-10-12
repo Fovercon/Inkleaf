@@ -138,6 +138,12 @@ export function registerIpc() {
     await fs.rename(tmp, p)
   })
 
+  // used for pasted images; creates parent directories as needed
+  ipcMain.handle('fs:writeBinary', async (_e, p: string, base64: string) => {
+    await fs.mkdir(path.dirname(p), { recursive: true })
+    await fs.writeFile(p, Buffer.from(base64, 'base64'))
+  })
+
   ipcMain.handle('shell:reveal', (_e, p: string) => {
     shell.showItemInFolder(p)
   })
