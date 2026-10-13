@@ -551,6 +551,8 @@ function setupDragDrop() {
   document.addEventListener('dragover', (e) => e.preventDefault())
   document.addEventListener('drop', (e) => {
     e.preventDefault()
+    // internal tree drags are handled by the file tree itself
+    if ([...(e.dataTransfer?.types ?? [])].includes('application/x-mdr-tree')) return
     const file = e.dataTransfer?.files?.[0]
     if (!file) return
     const path = window.mdr.pathForFile(file)

@@ -324,6 +324,35 @@ async function createWindow() {
           htmlText.includes('data:font/') ||
           htmlText.includes('data:image/')
         console.log(`[export-html] ${htmlOk ? 'OK' : 'FAIL'} size=${fs.existsSync(htmlPath) ? fs.statSync(htmlPath).size : 0} embedded=${htmlEmbedded}`)
+        // drag-and-drop move: 旅行计划.md -> 笔记/技术, verify, then move back
+        const dragResult = await win.webContents.executeJavaScript(`
+          (async () => {
+            const folderRow = document.querySelector('.tree-row[data-path$="/笔记"]');
+            if (folderRow && !folderRow.querySelector('.disclosure')?.textContent?.includes('▾')) {
+              folderRow.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 300));
+            }
+            const src = document.querySelector('.tree-row[data-path$="旅行计划.md"]');
+            const dst = document.querySelector('.tree-row[data-path$="/技术"]');
+            if (!src || !dst) return 'no-rows';
+            const dt = new DataTransfer();
+            dt.setData('application/x-mdr-tree', ${JSON.stringify(`${libPath}/笔记/旅行计划.md`)});
+            src.dispatchEvent(new DragEvent('dragstart', {bubbles: true, dataTransfer: dt}));
+            dst.dispatchEvent(new DragEvent('drop', {bubbles: true, dataTransfer: dt}));
+            await new Promise(r => setTimeout(r, 900));
+            // the target folder may be collapsed — expand it before asserting the moved row exists
+            if (dst && !dst.querySelector('.disclosure')?.textContent?.includes('▾')) {
+              dst.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 400));
+            }
+            return document.querySelector('.tree-row[data-path$="技术/旅行计划.md"]') ? 'moved-ok' : 'moved-fail';
+          })()
+        `)
+        console.log(`[drag-check] ${dragResult}`)
+        await win.webContents.executeJavaScript(
+          `window.mdr.rename(${JSON.stringify(`${libPath}/笔记/技术/旅行计划.md`)}, ${JSON.stringify(`${libPath}/笔记/旅行计划.md`)})`,
+        )
+        await new Promise((r) => setTimeout(r, 800))
         // theme & font scale verification
         await win.webContents.executeJavaScript(
           `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'sepia' })}}))`,

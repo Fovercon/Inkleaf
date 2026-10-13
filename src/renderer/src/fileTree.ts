@@ -20,6 +20,8 @@ type Editing =
   | { mode: 'create'; dir: string; kind: 'file' | 'dir' }
   | null
 
+const DRAG_TYPE = 'application/x-mdr-tree'
+
 export class FileTree {
   private selected: string | null = null
   private lastClickedDir: string | null = null
@@ -140,6 +142,30 @@ export class FileTree {
       const isSelected = n.type === 'file' && n.path === this.selected
       row.className = 'tree-row' + (isSelected ? ' selected' : '')
       row.dataset.path = n.path
+
+      // drag to move into folders (Obsidian-style)
+      row.draggable = true
+      row.addEventListener('dragstart', (e) => {
+        e.dataTransfer?.setData(DRAG_TYPE, n.path)
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
+        row.classList.add('dragging')
+      })
+      row.addEventListener('dragend', () => row.classList.remove('dragging'))
+      if (n.type === 'dir') {
+        row.addEventListener('dragover', (e) => {
+          e.preventDefault()
+          if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+          row.classList.add('drop-target')
+        })
+        row.addEventListener('dragleave', () => row.classList.remove('drop-target'))
+        row.addEventListener('drop', (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          row.classList.remove('drop-target')
+          const src = e.dataTransfer?.getData(DRAG_TYPE)
+          if (src) void this.applyMove(src, n.path)
+        })
+      }
 
       if (n.type === 'dir') {
         const isOpen = expanded.has(n.path) || !!this.filterQuery
@@ -293,6 +319,27 @@ export class FileTree {
       await this.refresh()
       this.flash(newPath)
     }
+  }
+
+  /** drag-and-drop: move a file/folder into the target directory */
+  private async applyMove(src: string, targetDir: string) {
+    if (src === targetDir || targetDir.startsWith(src + '/')) return // cannot move into itself
+    const name = src.split('/').pop() ?? src
+    const newPath = `${targetDir}/${name}`
+    if (newPath === src) return
+    if (await window.mdr.exists(newPath)) {
+      await window.mdr.confirm({ title: '无法移动', message: `目标文件夹中已存在“${name}”`, okLabel: '知道了' })
+      return this.refresh()
+    }
+    const r = await window.mdr.rename(src, newPath)
+    if (!r.ok) {
+      await window.mdr.confirm({ title: '无法移动', message: r.error ?? '未知错误', okLabel: '知道了' })
+      return this.refresh()
+    }
+    if (this.selected === src || (this.selected?.startsWith(src + '/') ?? false)) this.selected = newPath
+    this.onRenamed?.({ oldPath: src, newPath, isDir: this.findNode(src)?.type === 'dir' })
+    await this.refresh()
+    this.flash(newPath)
   }
 
   private async applyCreate(dir: string, kind: 'file' | 'dir', name: string) {
