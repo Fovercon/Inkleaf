@@ -12,6 +12,7 @@ import { setupSync } from './syncScroll'
 import { setupLightbox } from './lightbox'
 import { openPalette } from './commandPalette'
 import { buildStandaloneHtml } from './export'
+import { setupUpdater } from './updater'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -622,6 +623,7 @@ async function boot() {
 
   setupActions()
   setupEditorCallbacks()
+  setupUpdater(() => editor.saveNow())
   setupPreviewScroll()
   setupFsWatch()
   setupDragDrop()

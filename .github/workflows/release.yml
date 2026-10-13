@@ -1,0 +1,115 @@
+name: Build macOS release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release tag (must match package.json, e.g. v0.2.0)'
+        required: true
+        type: string
+      publish:
+        description: 'Publish the draft after uploading the verified assets'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mac-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Validate tag and refuse published-release changes
+        id: version
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          import { execFileSync } from 'node:child_process'
+          const version = JSON.parse(fs.readFileSync('package.json', 'utf8')).version
+          const tag = process.env.RELEASE_TAG
+          if (!/^\d+\.\d+\.\d+$/.test(version) || tag !== `v${version}`) {
+            throw new Error(`Tag ${tag} must equal the stable package version v${version}`)
+          }
+          const tagged = execFileSync('git', ['rev-parse', '--verify', `refs/tags/${tag}^{commit}`], { encoding: 'utf8' }).trim()
+          const head = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+          if (tagged !== head) throw new Error('The checked-out commit must be the tagged release commit')
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\n`)
+          NODE
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/inkleaf-release.json" 2> "$RUNNER_TEMP/inkleaf-release-error.txt"; then
+            node --input-type=module -e 'import fs from "node:fs"; if (!JSON.parse(fs.readFileSync(process.argv[1])).isDraft) throw new Error("This release is already published; publish a new version instead of replacing its assets")' "$RUNNER_TEMP/inkleaf-release.json"
+          elif ! grep -qi 'release not found' "$RUNNER_TEMP/inkleaf-release-error.txt"; then
+            cat "$RUNNER_TEMP/inkleaf-release-error.txt" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Test update package safety
+        run: npm run test:updates
+
+      - name: Build ZIP and checksum
+        run: npm run release:build -- --arch arm64
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Verify release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          cd dist
+          shasum -a 256 -c "Inkleaf-${VERSION}-mac-arm64.zip.sha256"
+          unzip -l "Inkleaf-${VERSION}-mac-arm64.zip" | grep 'Inkleaf.app/Contents/Info.plist'
+
+      - name: Create or refresh draft
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/inkleaf-release.json" 2> "$RUNNER_TEMP/inkleaf-release-error.txt"; then
+            node --input-type=module -e 'import fs from "node:fs"; if (!JSON.parse(fs.readFileSync(process.argv[1])).isDraft) throw new Error("Refusing to replace assets on a published release")' "$RUNNER_TEMP/inkleaf-release.json"
+            gh release upload "$RELEASE_TAG" "dist/Inkleaf-${VERSION}-mac-arm64.zip" "dist/Inkleaf-${VERSION}-mac-arm64.zip.sha256" --clobber
+          elif grep -qi 'release not found' "$RUNNER_TEMP/inkleaf-release-error.txt"; then
+            gh release create "$RELEASE_TAG" "dist/Inkleaf-${VERSION}-mac-arm64.zip" "dist/Inkleaf-${VERSION}-mac-arm64.zip.sha256" --draft --verify-tag --title "墨页 · Inkleaf ${VERSION}" --generate-notes
+          else
+            cat "$RUNNER_TEMP/inkleaf-release-error.txt" >&2
+            exit 1
+          fi
+
+      - name: Publish draft when explicitly selected
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        run: gh release edit "$RELEASE_TAG" --draft=false --latest
+
+      - name: Record result
+        shell: bash
+        run: |
+          echo "Release: https://github.com/${GH_REPO}/releases/tag/${RELEASE_TAG}" >> "$GITHUB_STEP_SUMMARY"
+          echo 'Tag pushes create a draft. Publish it on GitHub, or dispatch this workflow with publish enabled, to make the update available in Inkleaf.' >> "$GITHUB_STEP_SUMMARY"

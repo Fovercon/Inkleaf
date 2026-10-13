@@ -1,6 +1,17 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { UpdateState } from '../shared/updates'
 
 const api = {
+  getUpdateState: (): Promise<UpdateState> => ipcRenderer.invoke('update:getState'),
+  checkForUpdates: (): Promise<UpdateState> => ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<UpdateState> => ipcRenderer.invoke('update:download'),
+  cancelUpdate: (): Promise<UpdateState> => ipcRenderer.invoke('update:cancel'),
+  installUpdate: (): Promise<UpdateState> => ipcRenderer.invoke('update:install'),
+  onUpdateState: (cb: (state: UpdateState) => void) => {
+    const h = (_e: Electron.IpcRendererEvent, state: UpdateState) => cb(state)
+    ipcRenderer.on('update:state', h)
+    return () => ipcRenderer.removeListener('update:state', h)
+  },
   selectFolder: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFolder'),
   selectFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
   saveNewFile: (dir: string, defaultName: string): Promise<string | null> =>

@@ -1,6 +1,7 @@
 import { build } from 'esbuild'
 import { cp, rm } from 'node:fs/promises'
 import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 
 const OUT = 'out'
 await rm(OUT, { recursive: true, force: true })
@@ -32,4 +33,8 @@ await build({
 })
 
 await cp('src/renderer/index.html', path.join(OUT, 'renderer', 'index.html'))
+if (process.platform === 'darwin') {
+  execFileSync('/usr/bin/xcrun', ['clang', '-arch', 'arm64', '-mmacosx-version-min=11.0', '-O2', '-Wall', '-Wextra', '-Wno-deprecated-declarations',
+    'scripts/update-helper.c', '-o', path.join(OUT, 'inkleaf-update-helper')], { stdio: 'inherit' })
+}
 console.log('build done')

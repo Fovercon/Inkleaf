@@ -1,6 +1,6 @@
 {
   "name": "inkleaf",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "墨页 · Inkleaf — a quiet place to read and write Markdown",
   "main": "out/main.js",
   "author": "wangyuan",
@@ -12,7 +12,9 @@
     "start": "node esbuild.mjs && electron .",
     "test:ui": "node esbuild.mjs && MDR_TEST=1 electron .",
     "package": "node scripts/make-icon.mjs && node esbuild.mjs && electron-builder --mac dir --arm64",
-    "icon": "node scripts/make-icon.mjs"
+    "release:build": "node scripts/make-release.mjs",
+    "icon": "node scripts/make-icon.mjs",
+    "test:updates": "node scripts/test-updater.mjs"
   },
   "build": {
     "appId": "com.fovercon.inkleaf",
@@ -56,6 +58,7 @@
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^24.0.0",
+    "@types/yauzl": "^3.4.0",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "esbuild": "^0.24.2",
@@ -77,6 +80,7 @@
     "katex": "^0.16.21",
     "markdown-it": "^14.1.0",
     "markdown-it-task-lists": "^2.1.1",
-    "mermaid": "^11.4.1"
+    "mermaid": "^11.4.1",
+    "yauzl": "^3.4.0"
   }
 }

@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { registerIpc, getLibraryRoot, rebuildDockMenu } from './ipc'
+import { initializeUpdater } from './updater'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -87,6 +88,7 @@ if (!gotLock) {
     })
 
     registerIpc()
+    initializeUpdater()
     buildMenu()
     createWindow()
     if (app.dock) void rebuildDockMenu()
@@ -505,7 +507,15 @@ function buildMenu() {
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('menu', action))
 
   const template: Electron.MenuItemConstructorOptions[] = [
-    { role: 'appMenu' },
+    { role: 'appMenu', submenu: [
+      { role: 'about' },
+      { label: '检查更新…', click: () => send('check-updates') },
+      { type: 'separator' },
+      { role: 'services' },
+      { type: 'separator' },
+      { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+      { type: 'separator' }, { role: 'quit' },
+    ] },
     {
       role: 'fileMenu',
       submenu: [
