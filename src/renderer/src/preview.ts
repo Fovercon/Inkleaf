@@ -90,6 +90,9 @@ function mermaidTheme(): 'dark' | 'default' {
   return currentTheme() === 'dark' ? 'dark' : 'default'
 }
 
+// rendered-diagram cache keyed by theme+source (cleared on theme change)
+const mermaidCache = new Map<string, string>()
+
 async function renderMermaidBlocks(container: HTMLElement) {
   const blocks = Array.from(container.querySelectorAll<HTMLElement>('pre > code.language-mermaid'))
   if (!blocks.length) return
@@ -101,9 +104,20 @@ async function renderMermaidBlocks(container: HTMLElement) {
     const holder = document.createElement('div')
     holder.className = 'mermaid-block'
     if (pre.dataset.sourceLine) holder.dataset.sourceLine = pre.dataset.sourceLine
+    // reuse previously rendered diagrams — typing re-renders skip unchanged sources
+    const key = `${mermaidTheme()}\u0000${source}`
+    const cached = mermaidCache.get(key)
+    if (cached !== undefined) {
+      holder.innerHTML = cached
+      pre.replaceWith(holder)
+      continue
+    }
     try {
       const { svg } = await mermaid.render(`mmd-${Date.now().toString(36)}-${i}`, source)
-      holder.innerHTML = DOMPurify.sanitize(svg, { ADD_TAGS: ['foreignObject'] })
+      const clean = DOMPurify.sanitize(svg, { ADD_TAGS: ['foreignObject'] })
+      if (mermaidCache.size > 60) mermaidCache.clear()
+      mermaidCache.set(key, clean)
+      holder.innerHTML = clean
     } catch (err) {
       holder.classList.add('mermaid-error')
       const msg = document.createElement('div')
@@ -120,11 +134,17 @@ async function renderMermaidBlocks(container: HTMLElement) {
 
 export async function renderPreview(scroller: HTMLElement, container: HTMLElement, text: string, filePath: string | null) {
   const seq = ++renderSeq
-  const html = DOMPurify.sanitize(md.render(text), {
+  const big = text.length > 20000
+  const t0 = big ? performance.now() : 0
+  const raw = md.render(text)
+  const t1 = big ? performance.now() : 0
+  const html = DOMPurify.sanitize(raw, {
     ADD_ATTR: ['target', 'data-source-line', 'id', 'checked', 'disabled'],
   })
+  const t2 = big ? performance.now() : 0
   if (seq !== renderSeq) return // superseded by a newer render
   container.innerHTML = html
+  const t3 = big ? performance.now() : 0
 
   const baseDir = filePath ? filePath.slice(0, filePath.lastIndexOf('/')) : null
   container.querySelectorAll('img').forEach((img) => {
@@ -158,12 +178,20 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
     })
   })
 
+  const tm0 = big ? performance.now() : 0
   await renderMermaidBlocks(container)
   last = { container, scroller, text, filePath }
+  if (big) {
+    const t4 = performance.now()
+    console.log(
+      `[perf] render ${(text.length / 1024) | 0}KB parse=${(t1 - t0) | 0}ms sanitize=${(t2 - t1) | 0}ms dom=${(tm0 - t3) | 0}ms mermaid=${(t4 - tm0) | 0}ms total=${(t4 - t0) | 0}ms`,
+    )
+  }
 }
 
 onThemeChange(async () => {
-  // mermaid diagrams are baked with a theme; re-render everything and keep scroll position
+  // mermaid diagrams are baked with a theme; drop the cache and re-render, keep scroll position
+  mermaidCache.clear()
   if (!last) return
   const { scroller, text, filePath } = last
   const scroll = scroller.scrollTop

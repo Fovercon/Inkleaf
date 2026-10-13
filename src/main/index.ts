@@ -121,6 +121,28 @@ async function createWindow() {
         fs.mkdirSync(dir, { recursive: true })
         const img = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}.png`), img.toPNG())
+        // large-document performance probe: open the big fixture, log render timings, capture, go back
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.tree-row[data-path$="大文档.md"]')?.click()`,
+        )
+        await new Promise((r) => setTimeout(r, 4500))
+        const bigShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-big.png`), bigShot.toPNG())
+        // simulate a keystroke in the big doc: re-render should hit the mermaid cache, then undo
+        await win.webContents.executeJavaScript(`
+          (() => {
+            document.querySelector('.cm-content')?.focus();
+            document.execCommand('insertText', false, 'x');
+            return true
+          })()
+        `)
+        await new Promise((r) => setTimeout(r, 1600))
+        await win.webContents.executeJavaScript(`document.execCommand('undo')`)
+        await new Promise((r) => setTimeout(r, 3200))
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.tree-row[data-path$="README.md"]')?.click()`,
+        )
+        await new Promise((r) => setTimeout(r, 1500))
         // exercise the image lightbox: click the first preview image, then capture again
         await win.webContents.executeJavaScript(
           `!!document.querySelector('#preview .md-preview img, #preview img')`,

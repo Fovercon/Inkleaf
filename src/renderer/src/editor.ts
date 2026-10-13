@@ -114,6 +114,8 @@ export class EditorPane {
   private path: string | null = null
   private dirty = false
   private saveTimer: number | null = null
+  /** true while openFile/clear swap the document — suppresses dirty tracking and re-render */
+  private loading = false
   /** last time this editor itself wrote the file — used to ignore the resulting fs watch event */
   lastSavedAt = 0
 
@@ -152,7 +154,7 @@ export class EditorPane {
             },
           }),
           EditorView.updateListener.of((u) => {
-            if (u.docChanged) {
+            if (u.docChanged && !this.loading) {
               this.setDirty(true)
               this.onDocChanged?.()
               this.scheduleSave()
@@ -172,7 +174,12 @@ export class EditorPane {
     this.path = path
     this.cancelSave()
     this.setDirty(false)
-    this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: content } })
+    this.loading = true
+    try {
+      this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: content } })
+    } finally {
+      this.loading = false
+    }
     this.reportStats()
   }
 
@@ -180,7 +187,12 @@ export class EditorPane {
     this.path = null
     this.cancelSave()
     this.setDirty(false)
-    this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: '' } })
+    this.loading = true
+    try {
+      this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: '' } })
+    } finally {
+      this.loading = false
+    }
     this.onStatsChange?.('')
   }
 

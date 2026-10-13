@@ -52,18 +52,21 @@ async function readTree(root: string): Promise<TreeNode[]> {
       return []
     }
     entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
-    const nodes: TreeNode[] = []
+    const files: TreeNode[] = []
+    const dirs: TreeNode[] = []
     for (const e of entries) {
       if (e.name.startsWith('.') || e.name === 'node_modules') continue
       const p = path.join(dir, e.name)
-      if (e.isDirectory()) {
-        nodes.push({ name: e.name, path: p, type: 'dir', children: await walk(p) })
-      } else if (e.isFile() && /\.(md|markdown|mdx)$/i.test(e.name)) {
-        nodes.push({ name: e.name, path: p, type: 'file' })
-      }
+      if (e.isDirectory()) dirs.push({ name: e.name, path: p, type: 'dir' })
+      else if (e.isFile() && /\.(md|markdown|mdx)$/i.test(e.name)) files.push({ name: e.name, path: p, type: 'file' })
     }
-    // dirs first, keep name order within each group (stable sort)
-    return nodes.sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1))
+    // walk subdirectories in parallel, then attach children
+    const children = await Promise.all(dirs.map((d) => walk(d.path)))
+    dirs.forEach((d, i) => {
+      d.children = children[i]
+    })
+    // dirs first, keep name order within each group
+    return [...dirs, ...files]
   }
   return walk(root)
 }
@@ -122,9 +125,11 @@ export function registerIpc() {
   ipcMain.handle('lib:open', async (_e, root: string) => {
     if (!fsSync.existsSync(root)) return null
     libraryRoot = root
-    await startWatch(root)
+    // tree first so the UI fills fast; the watcher can warm up afterwards
+    const tree = await readTree(root)
+    void startWatch(root).catch(() => {})
     await patchSession({ libraryRoot: root })
-    return readTree(root)
+    return tree
   })
 
   ipcMain.handle('lib:tree', () => (libraryRoot ? readTree(libraryRoot) : []))

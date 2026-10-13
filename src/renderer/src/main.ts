@@ -462,10 +462,13 @@ function setupEditorCallbacks() {
   }
   editor.onDocChanged = () => {
     if (renderTimer) clearTimeout(renderTimer)
+    // larger documents get a longer debounce so typing stays ahead of rendering
+    const size = editor.getContent().length
+    const delay = size > 100_000 ? 600 : size > 30_000 ? 400 : 250
     renderTimer = window.setTimeout(async () => {
       await renderPreview(previewScroll, preview, editor.getContent(), runtime.currentFile)
       buildOutline(preview, outlineNav)
-    }, 250)
+    }, delay)
   }
   setTaskToggleHandler((line, checked) => editor.toggleTaskAtLine(line, checked))
 }
