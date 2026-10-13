@@ -75,11 +75,23 @@ function encodeFilePath(abs: string): string {
 }
 
 let mermaidReady: Promise<typeof import('mermaid')['default']> | null = null
+function mermaidInitOptions() {
+  return {
+    startOnLoad: false,
+    securityLevel: 'strict' as const,
+    theme: mermaidTheme(),
+    // pure SVG <text> labels: foreignObject HTML gets stripped by DOMPurify's SVG profile
+    // useMaxWidth off: keep diagrams readable, the container scrolls horizontally instead
+    flowchart: { htmlLabels: false, useMaxWidth: false },
+    class: { htmlLabels: false, useMaxWidth: false },
+    sequence: { useMaxWidth: false },
+  }
+}
 function getMermaid() {
   if (!mermaidReady) {
     mermaidReady = import('mermaid').then((m) => {
       const mermaid = m.default
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: mermaidTheme() })
+      mermaid.initialize(mermaidInitOptions())
       return mermaid
     })
   }
@@ -196,7 +208,7 @@ onThemeChange(async () => {
   const { scroller, text, filePath } = last
   const scroll = scroller.scrollTop
   const mermaid = await getMermaid()
-  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: mermaidTheme() })
+  mermaid.initialize(mermaidInitOptions())
   await renderPreview(scroller, scroller, text, filePath)
   scroller.scrollTop = scroll
 })

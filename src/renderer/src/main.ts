@@ -47,12 +47,18 @@ function applyLayout() {
   editorPane.classList.toggle('pane-collapsed', s.collapsed.editor)
   previewPane.classList.toggle('pane-collapsed', s.collapsed.preview)
   outlinePane.classList.toggle('pane-collapsed', s.collapsed.outline)
-  sidebar.style.width = `${s.widths.sidebar}px`
-  editorPane.style.width = `${s.widths.editor}px`
+  sidebar.style.width = s.collapsed.sidebar ? '' : `${s.widths.sidebar}px`
+  // with the preview hidden the editor takes over the full area
+  const editorFills = s.collapsed.preview && !s.collapsed.editor
+  editorPane.classList.toggle('fill', editorFills)
+  editorPane.style.width = editorFills ? '' : `${s.widths.editor}px`
   outlinePane.style.width = `${s.widths.outline}px`
   $('#resizer-sidebar').classList.toggle('pane-collapsed', s.collapsed.sidebar)
   $('#resizer-editor').classList.toggle('pane-collapsed', s.collapsed.editor || s.collapsed.preview)
   $('#resizer-outline').classList.toggle('pane-collapsed', s.collapsed.outline)
+  $('#sidebar-collapse').classList.toggle('pane-collapsed', s.collapsed.sidebar)
+  $('#sidebar-expand').classList.toggle('visible', s.collapsed.sidebar)
+  $('#btn-toggle-sidebar').classList.toggle('active', s.collapsed.sidebar)
   emptyState.classList.toggle('visible', !runtime.currentFile)
 }
 
@@ -104,6 +110,7 @@ async function openLibrary(root: string): Promise<boolean> {
   runtime.libraryRoot = root
   session.libraryRoot = root
   persistSession()
+  $('#library-name').textContent = root.split('/').pop() || '书库'
   await tree.refresh()
   applyLayout()
   return true
@@ -352,6 +359,21 @@ async function exportTo(kind: 'pdf' | 'html', target: string) {
   }
 }
 
+/** pick an image (or use the given src), copy it into assets, reference it at the cursor */
+async function insertImageFrom(srcOverride?: string) {
+  const cur = runtime.currentFile
+  if (!cur) return
+  const src = srcOverride ?? (await window.mdr.pickImage())
+  if (!src) return
+  const dir = cur.slice(0, cur.lastIndexOf('/'))
+  const dest = await window.mdr.copyImage(src, `${dir}/assets`)
+  if (!dest) {
+    void window.mdr.confirm({ title: '插入失败', message: '图片复制失败', okLabel: '知道了' })
+    return
+  }
+  editor.insertImageAtCursor(`assets/${dest.split('/').pop()}`)
+}
+
 async function exportCurrent(kind: 'pdf' | 'html') {
   if (!runtime.currentFile) return
   const name = (runtime.currentFile.split('/').pop() ?? 'export').replace(/\.(md|markdown|mdx)$/i, '')
@@ -378,6 +400,8 @@ function setupActions() {
   $('#empty-open-folder').addEventListener('click', () => void openFolderAction())
   $('#empty-open-file').addEventListener('click', () => void openFileAction())
   $('#btn-toggle-sidebar').addEventListener('click', () => togglePane('sidebar'))
+  $('#sidebar-collapse').addEventListener('click', () => togglePane('sidebar'))
+  $('#sidebar-expand').addEventListener('click', () => togglePane('sidebar'))
   $('#btn-toggle-editor').addEventListener('click', () => togglePane('editor'))
   $('#btn-toggle-preview').addEventListener('click', () => togglePane('preview'))
   $('#btn-toggle-outline').addEventListener('click', () => togglePane('outline'))
@@ -459,6 +483,9 @@ function setupActions() {
         break
       case 'fmt-link':
         editor.insertLink()
+        break
+      case 'insert-image':
+        void insertImageFrom()
         break
       case 'quick-switch':
         openPaletteFor('files')
@@ -564,6 +591,9 @@ function setupDragDrop() {
         if (!runtime.libraryRoot) await openLibrary(path.slice(0, path.lastIndexOf('/')))
         await openFile(path)
       })()
+    } else if (/\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(path) && runtime.currentFile) {
+      // drop an image straight into the document
+      void insertImageFrom(path)
     }
   })
 }
@@ -602,6 +632,10 @@ async function boot() {
   })
   document.addEventListener('mdr-test-zoom', (e) => {
     applyFontScale(Number((e as CustomEvent).detail?.scale ?? 1) || 1)
+  })
+  // test hook: insert an image from a fixed path
+  document.addEventListener('mdr-test-insert-image', (e) => {
+    void insertImageFrom((e as CustomEvent).detail?.src)
   })
 
   // macOS: file double-clicked in Finder / dock recent files

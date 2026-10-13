@@ -241,6 +241,31 @@ export function registerIpc() {
 
   ipcMain.handle('fs:exists', (_e, p: string) => fsSync.existsSync(p))
 
+  ipcMain.handle('dialog:pickImage', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender)
+    const options = {
+      title: '插入图片',
+      properties: ['openFile'] as Array<'openFile'>,
+      filters: [{ name: '图片', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp'] }],
+    }
+    const r = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options)
+    return r.canceled ? null : r.filePaths[0]
+  })
+
+  // copies an image into <docDir>/assets with a timestamped name; returns the destination path
+  ipcMain.handle('fs:copyImage', async (_e, src: string, destDir: string) => {
+    try {
+      await fs.mkdir(destDir, { recursive: true })
+      const name = src.split('/').pop() ?? 'image.png'
+      const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')) : '.png'
+      const dest = path.join(destDir, `img-${Date.now()}${ext}`)
+      await fs.copyFile(src, dest)
+      return dest
+    } catch {
+      return null
+    }
+  })
+
   ipcMain.handle('dialog:confirm', async (e, opts: { title: string; message: string; okLabel?: string }) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     if (!win) return false

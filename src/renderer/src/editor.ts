@@ -251,6 +251,15 @@ export class EditorPane {
     if (updated !== text) v.dispatch({ changes: { from: line.from, to: line.to, insert: updated } })
   }
 
+  /** insert an image reference at the cursor */
+  insertImageAtCursor(ref: string) {
+    const v = this.view
+    if (!v) return
+    const sel = v.state.selection.main
+    v.dispatch({ changes: { from: sel.from, to: sel.to, insert: `![](${ref})\n` } })
+    this.focus()
+  }
+
   private async savePastedImage(file: File) {
     const v = this.view
     if (!v || !this.path) return

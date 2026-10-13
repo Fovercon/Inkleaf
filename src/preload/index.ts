@@ -20,6 +20,9 @@ const api = {
   trash: (p: string): Promise<void> => ipcRenderer.invoke('fs:trash', p),
   mkdir: (p: string): Promise<void> => ipcRenderer.invoke('fs:mkdir', p),
   exists: (p: string): Promise<boolean> => ipcRenderer.invoke('fs:exists', p),
+  pickImage: (): Promise<string | null> => ipcRenderer.invoke('dialog:pickImage'),
+  copyImage: (src: string, destDir: string): Promise<string | null> =>
+    ipcRenderer.invoke('fs:copyImage', src, destDir),
   confirm: (opts: { title: string; message: string; okLabel?: string }): Promise<boolean> =>
     ipcRenderer.invoke('dialog:confirm', opts),
   saveExportPath: (defaultName: string, ext: string): Promise<string | null> =>

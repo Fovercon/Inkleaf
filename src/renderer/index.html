@@ -25,7 +25,9 @@
   <div id="editor-stats"></div>
 </header>
 <div id="workspace">
+  <button id="sidebar-expand" title="展开书库栏 (⌘\)">›</button>
   <aside id="sidebar">
+    <div id="library-title"><span class="lib-icon">📚</span><span id="library-name">书库</span></div>
     <div class="sidebar-tabs">
       <button id="tab-files" class="stab active">文件</button>
       <button id="tab-recent" class="stab">最近</button>
@@ -33,6 +35,7 @@
     <div id="tree-filter"><input id="tree-filter-input" type="search" placeholder="过滤文件…" /></div>
     <div id="file-tree"></div>
     <div id="recent-list"></div>
+    <button id="sidebar-collapse" title="收起书库栏 (⌘\)">‹</button>
   </aside>
   <div class="resizer" id="resizer-sidebar"></div>
   <section id="editor-pane"><div id="editor-host"></div></section>

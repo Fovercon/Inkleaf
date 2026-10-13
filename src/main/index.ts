@@ -353,6 +353,37 @@ async function createWindow() {
           `window.mdr.rename(${JSON.stringify(`${libPath}/笔记/技术/旅行计划.md`)}, ${JSON.stringify(`${libPath}/笔记/旅行计划.md`)})`,
         )
         await new Promise((r) => setTimeout(r, 800))
+        // mermaid text labels: scroll to the first diagram and capture it
+        await win.webContents.executeJavaScript(
+          `document.querySelector('#preview .mermaid-block')?.scrollIntoView({block: 'center'})`,
+        )
+        await new Promise((r) => setTimeout(r, 400))
+        const mermaidShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-mermaid.png`), mermaidShot.toPNG())
+        await win.webContents.executeJavaScript(
+          `document.querySelector('#preview')?.scrollTo?.(0, 0); document.getElementById('preview-scroll')?.scrollTo(0, 0)`,
+        )
+        // collapse the preview pane: the editor must fill the freed space
+        await win.webContents.executeJavaScript(`document.getElementById('btn-toggle-preview')?.click()`)
+        await new Promise((r) => setTimeout(r, 400))
+        const collapsedShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-nopreview.png`), collapsedShot.toPNG())
+        await win.webContents.executeJavaScript(`document.getElementById('btn-toggle-preview')?.click()`)
+        await new Promise((r) => setTimeout(r, 400))
+        // insert-image flow: copy sample.png into assets, reference at cursor, verify preview picks it up
+        const insertResult = await win.webContents.executeJavaScript(`
+          (async () => {
+            const path = ${JSON.stringify(`${libPath}/README.md`)};
+            const before = await window.mdr.readFile(path);
+            const imgsBefore = document.querySelectorAll('#preview img').length;
+            document.dispatchEvent(new CustomEvent('mdr-test-insert-image', {detail: {src: ${JSON.stringify(`${libPath}/assets/sample.png`)}}}));
+            await new Promise(r => setTimeout(r, 1200));
+            const imgsAfter = document.querySelectorAll('#preview img').length;
+            await window.mdr.writeFile(path, before);
+            return JSON.stringify({imgsBefore, imgsAfter, ok: imgsAfter === imgsBefore + 1});
+          })()
+        `)
+        console.log(`[insert-image-check] ${insertResult}`)
         // theme & font scale verification
         await win.webContents.executeJavaScript(
           `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'sepia' })}}))`,
@@ -436,6 +467,8 @@ function buildMenu() {
         { type: 'separator' },
         { label: '代码块', accelerator: 'CmdOrCtrl+Shift+K', click: () => send('fmt-codeblock') },
         { label: '链接', accelerator: 'CmdOrCtrl+K', click: () => send('fmt-link') },
+        { type: 'separator' },
+        { label: '插入图片…', accelerator: 'CmdOrCtrl+Shift+I', click: () => send('insert-image') },
       ],
     },
     {
