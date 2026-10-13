@@ -15,7 +15,7 @@ Markdown Reader 自动化打磨记录。每轮流程：调研业界标杆（Typo
 | 6 | 导出 PDF / HTML | Typora 导出 | ✅ |
 | 7 | 主题系统：多内置主题、自定义 CSS | Typora 主题 | ✅（自定义 CSS 暂缓） |
 | 8 | 性能：大文件渲染、启动速度 | Mark Text | ✅ |
-| 9 | macOS 集成：文件关联、细节打磨 | 原生体验 | ⬜ |
+| 9 | macOS 集成：文件关联、细节打磨 | 原生体验 | ✅ |
 | 10 | 终检回归 + 最终打包 | — | ⬜ |
 
 ## 第 0 轮 — MVP（基线）
@@ -189,6 +189,24 @@ Markdown Reader 自动化打磨记录。每轮流程：调研业界标杆（Typo
 - 未做预览虚拟滚动/分块渲染（Mark Text 也未做；当前 100ms 级重渲染已无感知卡顿，如未来需要再引入 IntersectionObserver 懒渲染）
 - DOMPurify sanitize 占比最高（~52ms/85KB），如需再提速可换 DOM fragment 单遍策略或 Worker 化
 - 贴图真实交互测试；树内拖拽（下轮如有余力可做）
+
+## 第 9 轮 — macOS 集成（原生体验打磨）
+
+日期：2026-10-13
+
+**改进内容**：
+- **.md 文件关联**：electron-builder fileAssociations（md/markdown，Viewer 角色），Finder 右键"打开方式"可选本应用；主进程处理 `open-file` 事件（应用未启动时排队、启动后 800ms 投递；运行中双击直达渲染层），无书库时自动以文件所在目录为书库
+- **Dock 菜单**：打开文件/打开文件夹 + 最近 5 个文件（session.recentFiles 由渲染层同步，每次写会话自动重建菜单）
+- **原生窗口细节**：`setDocumentEdited`——未保存时关闭按钮显示原生圆点；`setRepresentedFilename`——标题栏显示文件代理图标、可拖拽移动文件、标题跟随文件名
+- **自定义应用图标**：脚本生成（渐变圆角方块 + 白色 M）→ sips/iconutil 产出 build/icon.icns，替换默认 Electron 图标
+- **菜单补充**：关闭书库（⇧⌘W，清空书库回到欢迎页）
+
+**验证**：tsc 无错误；全部回归通过（perf 缓存命中 96→117ms 波动正常、task/rename/palette/export 全绿）；win:edited/win:file IPC 冒烟通过；打包产物 Info.plist 确认 CFBundleDocumentTypes（md/markdown、icon 引用正确）、Resources/icon.icns（277KB）就位；布局截图回归无异常。
+
+**遗留问题**：
+- 文件关联的 Finder 双击打开完整链路需真机手动验证（自动化无法模拟 Finder 事件）
+- Dock 菜单最近文件视觉需手动确认
+- 贴图真实交互测试；树内拖拽（第 10 轮如有余力）
 
 ## 构建与验证命令
 

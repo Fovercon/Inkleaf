@@ -26,6 +26,8 @@ const api = {
     ipcRenderer.invoke('export:savePath', defaultName, ext),
   exportPdf: (html: string, target: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke('export:pdf', html, target),
+  setWindowEdited: (edited: boolean): Promise<void> => ipcRenderer.invoke('win:edited', edited),
+  setWindowFile: (p: string | null): Promise<void> => ipcRenderer.invoke('win:file', p),
   reveal: (p: string): Promise<void> => ipcRenderer.invoke('shell:reveal', p),
   getSession: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('session:get'),
   setSession: (s: Record<string, unknown>): Promise<void> => ipcRenderer.invoke('session:set', s),
@@ -39,6 +41,11 @@ const api = {
     const h = (_e: Electron.IpcRendererEvent, ev: { event: string; path: string }) => cb(ev)
     ipcRenderer.on('fs:event', h)
     return () => ipcRenderer.removeListener('fs:event', h)
+  },
+  onOpenPath: (cb: (p: string) => void) => {
+    const h = (_e: Electron.IpcRendererEvent, p: string) => cb(p)
+    ipcRenderer.on('open-path', h)
+    return () => ipcRenderer.removeListener('open-path', h)
   },
 }
 

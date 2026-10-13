@@ -139,7 +139,9 @@ async function openFile(path: string, opts?: { line?: number }): Promise<boolean
     }
     runtime.currentFile = path
     session.lastFile = path
+    session.recentFiles = [path, ...(Array.isArray(session.recentFiles) ? (session.recentFiles as string[]) : []).filter((x) => x !== path)].slice(0, 10)
     persistSession()
+    void window.mdr.setWindowFile(path)
     tree.markSelected(path)
     editor.openFile(path, content)
     const name = path.split('/').pop() ?? path
@@ -170,6 +172,8 @@ function closeFile() {
   runtime.currentFile = null
   session.lastFile = null
   persistSession()
+  void window.mdr.setWindowFile(null)
+  void window.mdr.setWindowEdited(false)
   tree.markSelected(null)
   editor.clear()
   preview.innerHTML = ''
@@ -357,6 +361,16 @@ async function exportCurrent(kind: 'pdf' | 'html') {
   await exportTo(kind, target)
 }
 
+async function closeLibrary() {
+  await window.mdr.closeLibrary()
+  runtime.libraryRoot = null
+  session.libraryRoot = null
+  persistSession()
+  closeFile()
+  await tree.refresh()
+  applyLayout()
+}
+
 function setupActions() {
   $('#btn-open-folder').addEventListener('click', () => void openFolderAction())
   $('#btn-open-file').addEventListener('click', () => void openFileAction())
@@ -419,6 +433,18 @@ function setupActions() {
       case 'zoom-reset':
         applyFontScale(1)
         break
+      case 'close-library':
+        void closeLibrary()
+        break
+      default:
+        if (action.startsWith('open-path:')) {
+          const p = action.slice('open-path:'.length)
+          void (async () => {
+            if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
+            await openFile(p)
+          })()
+        }
+        break
       case 'fmt-bold':
         editor.toggleBold()
         break
@@ -456,6 +482,7 @@ function setupEditorCallbacks() {
     saveStateEl.classList.toggle('dirty', d)
     const name = runtime.currentFile?.split('/').pop() ?? ''
     document.title = `${d ? '● ' : ''}${name} — Markdown Reader`
+    void window.mdr.setWindowEdited(d && !!runtime.currentFile)
   }
   editor.onStatsChange = (s) => {
     $('#editor-stats').textContent = s
@@ -573,6 +600,14 @@ async function boot() {
   })
   document.addEventListener('mdr-test-zoom', (e) => {
     applyFontScale(Number((e as CustomEvent).detail?.scale ?? 1) || 1)
+  })
+
+  // macOS: file double-clicked in Finder / dock recent files
+  window.mdr.onOpenPath((p) => {
+    void (async () => {
+      if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
+      await openFile(p)
+    })()
   })
 
   setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)

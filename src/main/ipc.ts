@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, BrowserWindow, shell } from 'electron'
+import { app, ipcMain, dialog, BrowserWindow, shell, Menu } from 'electron'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
@@ -35,6 +35,27 @@ async function readSession(): Promise<Record<string, unknown>> {
 async function writeSession(s: Record<string, unknown>) {
   await fs.mkdir(path.dirname(sessionPath()), { recursive: true })
   await fs.writeFile(sessionPath(), JSON.stringify(s, null, 2))
+  void rebuildDockMenu()
+}
+
+/** macOS dock menu: open actions + the five most recent files */
+export async function rebuildDockMenu() {
+  if (process.platform !== 'darwin' || !app.dock) return
+  const session = await readSession()
+  const recents = Array.isArray(session.recentFiles) ? (session.recentFiles as string[]) : []
+  const send = (action: string) =>
+    BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('menu', action))
+  const template: Electron.MenuItemConstructorOptions[] = [
+    { label: '打开文件…', click: () => send('open-file') },
+    { label: '打开文件夹…', click: () => send('open-folder') },
+  ]
+  if (recents.length) {
+    template.push({ type: 'separator' })
+    for (const p of recents.slice(0, 5)) {
+      template.push({ label: p.split('/').pop() ?? p, click: () => send(`open-path:${p}`) })
+    }
+  }
+  app.dock.setMenu(Menu.buildFromTemplate(template))
 }
 
 async function patchSession(patch: Record<string, unknown>) {
@@ -273,4 +294,20 @@ export function registerIpc() {
 
   ipcMain.handle('session:get', () => readSession())
   ipcMain.handle('session:set', (_e, s: Record<string, unknown>) => writeSession(s))
+
+  // macOS window chrome: unsaved dot + proxy file icon in the titlebar
+  ipcMain.handle('win:edited', (_e, edited: boolean) => {
+    BrowserWindow.getAllWindows().forEach((w) => w.setDocumentEdited(edited))
+  })
+  ipcMain.handle('win:file', (_e, p: string | null) => {
+    BrowserWindow.getAllWindows().forEach((w) => {
+      if (p) {
+        w.setRepresentedFilename(p)
+        w.setTitle(p.split('/').pop() ?? 'Markdown Reader')
+      } else {
+        w.setRepresentedFilename('')
+        w.setTitle('Markdown Reader')
+      }
+    })
+  })
 }

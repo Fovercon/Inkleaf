@@ -3,7 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { registerIpc, getLibraryRoot } from './ipc'
+import { registerIpc, getLibraryRoot, rebuildDockMenu } from './ipc'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -28,6 +28,20 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
+  // macOS: .md file double-clicked in Finder / dragged onto the dock icon
+  let pendingOpenPath: string | null = null
+  app.on('open-file', (event, p) => {
+    event.preventDefault()
+    pendingOpenPath = p
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      win.webContents.send('open-path', p)
+      if (win.isMinimized()) win.restore()
+      win.focus()
+      pendingOpenPath = null
+    }
+  })
+
   app.on('second-instance', () => {
     const win = BrowserWindow.getAllWindows()[0]
     if (win) {
@@ -69,6 +83,16 @@ if (!gotLock) {
     registerIpc()
     buildMenu()
     createWindow()
+    if (app.dock) void rebuildDockMenu()
+
+    // a file was passed at launch (e.g. double-clicked before the app was running)
+    if (pendingOpenPath) {
+      const p = pendingOpenPath
+      pendingOpenPath = null
+      setTimeout(() => {
+        BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('open-path', p))
+      }, 800)
+    }
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -330,6 +354,10 @@ async function createWindow() {
         await win.webContents.executeJavaScript(
           `document.dispatchEvent(new CustomEvent('mdr-test-zoom', {detail: ${JSON.stringify({ scale: 1 })}}))`,
         )
+        // macOS window chrome smoke: unsaved dot + represented file
+        await win.webContents.executeJavaScript(
+          `window.mdr.setWindowEdited(true).then(() => window.mdr.setWindowEdited(false))`,
+        )
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
@@ -362,6 +390,8 @@ function buildMenu() {
         { type: 'separator' },
         { label: '导出为 PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: () => send('export-pdf') },
         { label: '导出为 HTML…', accelerator: 'CmdOrCtrl+Shift+H', click: () => send('export-html') },
+        { type: 'separator' },
+        { label: '关闭书库', accelerator: 'CmdOrCtrl+Shift+W', click: () => send('close-library') },
         { type: 'separator' },
         { role: 'close', label: '关闭窗口' },
       ],
