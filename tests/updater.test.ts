@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
-import { chmod, copyFile, link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, link, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
@@ -223,6 +223,27 @@ test('Linux native helper replaces atomically, keeps backup, verifies both paylo
   assert.throws(() => execFileSync(helper, [target, badStage, source, digest, '2147483647', path.join(badJob, 'boot-ack'), nonce, '0.3.0', badResult]))
   await rm(targetAlias)
   assert.deepEqual(await readFile(target), executable)
+  // A recognized header is insufficient to execute: ENOEXEC must restore an
+  // independent original inode, retaining the backup and future update support.
+  const rollbackJob = path.join(directory, '.inkleaf-update-rollback')
+  await mkdir(rollbackJob, { mode: 0o700 })
+  const invalidImage = appImageHeader(process.arch)
+  const rollbackStage = path.join(rollbackJob, 'Inkleaf.AppImage'), rollbackSource = path.join(rollbackJob, 'download.AppImage')
+  await writeFile(rollbackStage, invalidImage, { mode: 0o700 })
+  await writeFile(rollbackSource, invalidImage)
+  const rollbackDigest = createHash('sha256').update(invalidImage).digest('hex')
+  const rollbackResult = path.join(rollbackJob, 'result.json')
+  assert.throws(() => execFileSync(helper, [target, rollbackStage, rollbackSource, rollbackDigest, '2147483647', path.join(rollbackJob, 'boot-ack'), nonce, '0.3.0', rollbackResult], { timeout: 10000 }))
+  const rollbackReceipt = JSON.parse(await readFile(rollbackResult, 'utf8'))
+  assert.equal(rollbackReceipt.state, 'rolled-back')
+  assert.deepEqual(await readFile(target), executable)
+  assert.deepEqual(await readFile(rollbackReceipt.backupPath), executable)
+  const restored = await stat(target), retained = await stat(rollbackReceipt.backupPath)
+  assert.equal(restored.nlink, 1)
+  assert.equal(retained.nlink, 1)
+  assert.notEqual(restored.ino, retained.ino)
+  await assert.doesNotReject(validateAppImageFile(target, process.arch, true))
+  assert.equal(await appImageTarget(target, process.arch), target)
 })
 
 test('redirect allowlist accepts GitHub HTTPS assets only and isolates API requests', () => {

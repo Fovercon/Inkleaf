@@ -316,11 +316,51 @@ static bool atomic_install(void) {
 
 static bool restore_previous(void) {
   const char *restore_name = "restore.AppImage";
-  if (linkat(private_fd, backup_name, private_fd, restore_name, 0) != 0)
-    return system_fail("Cannot prepare the retained previous AppImage");
-  if (renameat(private_fd, restore_name, target_parent_fd, target_name) != 0)
-    return system_fail("Cannot atomically restore the previous AppImage");
-  return true;
+  int source = openat(private_fd, backup_name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+  if (source < 0) return system_fail("Cannot read the retained previous AppImage");
+  struct stat initial, final;
+  if (fstat(source, &initial) || !S_ISREG(initial.st_mode) || initial.st_uid != getuid() ||
+      initial.st_nlink != 1 || initial.st_size < 64 || initial.st_size > 1024LL * 1024 * 1024) {
+    close(source);
+    return fail("The retained previous AppImage is not a safe, bounded regular file");
+  }
+  /* A hardlink would leave target and backup sharing an inode after rollback,
+   * making the next update correctly reject target's link count. Keep both as
+   * independent files and still replace target with one atomic rename. */
+  int destination = openat(private_fd, restore_name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0700);
+  if (destination < 0) { close(source); return system_fail("Cannot prepare an independent AppImage for restoration"); }
+  bool okay = false;
+  unsigned char buffer[65536];
+  off_t copied = 0;
+  for (;;) {
+    ssize_t count = read(source, buffer, sizeof(buffer));
+    if (count == 0) break;
+    if (count < 0) { if (errno == EINTR) continue; system_fail("Cannot read the previous AppImage"); goto cleanup; }
+    copied += count;
+    if (copied > initial.st_size) { fail("The previous AppImage changed during restoration"); goto cleanup; }
+    size_t written = 0;
+    while (written < (size_t)count) {
+      ssize_t amount = write(destination, buffer + written, (size_t)count - written);
+      if (amount < 0 && errno == EINTR) continue;
+      if (amount <= 0) { system_fail("Cannot write the previous AppImage"); goto cleanup; }
+      written += (size_t)amount;
+    }
+  }
+  if (copied != initial.st_size || fstat(source, &final) || final.st_size != initial.st_size || final.st_mtime != initial.st_mtime) {
+    fail("The previous AppImage changed during restoration"); goto cleanup;
+  }
+  if (fchmod(destination, 0700) || fsync(destination)) { system_fail("Cannot persist the restored AppImage"); goto cleanup; }
+  if (close(destination)) { destination = -1; system_fail("Cannot finish writing the restored AppImage"); goto cleanup; }
+  destination = -1;
+  if (renameat(private_fd, restore_name, target_parent_fd, target_name)) {
+    system_fail("Cannot atomically restore the previous AppImage"); goto cleanup;
+  }
+  okay = true;
+cleanup:
+  close(source);
+  if (destination >= 0) close(destination);
+  if (!okay) unlinkat(private_fd, restore_name, 0);
+  return okay;
 }
 
 static bool launch_previous(void) {

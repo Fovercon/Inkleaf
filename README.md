@@ -10,6 +10,8 @@
 
 ## 快速开始
 
+源码开发需要 Node.js 与 npm。Linux 还需要 GCC，每次 `build`、`start` 或 UI 测试都会编译原生更新助手，可先运行 `sudo apt install build-essential`；构建安装包另需 `dpkg` 和 `fpm`。下载好的 `.deb` 或 AppImage 已包含运行时与助手，日常运行不需要安装 Node.js 或 GCC。
+
 ```bash
 npm install       # 安装依赖（.npmrc 已配置国内镜像）
 npm start         # 开发模式启动
