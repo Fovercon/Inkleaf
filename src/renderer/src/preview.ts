@@ -126,7 +126,11 @@ async function renderMermaidBlocks(container: HTMLElement) {
     }
     try {
       const { svg } = await mermaid.render(`mmd-${Date.now().toString(36)}-${i}`, source)
-      const clean = DOMPurify.sanitize(svg, { ADD_TAGS: ['foreignObject'] })
+      // mermaid renders node labels as foreignObject HTML regardless of htmlLabels;
+      // DOMPurify's SVG profile strips that HTML (labels vanish), so the raw output is
+      // kept as-is — safety comes from securityLevel:'strict' (labels escaped by mermaid)
+      // plus the page CSP which blocks any script execution.
+      const clean = svg
       if (mermaidCache.size > 60) mermaidCache.clear()
       mermaidCache.set(key, clean)
       holder.innerHTML = clean

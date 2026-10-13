@@ -360,6 +360,35 @@ async function createWindow() {
         await new Promise((r) => setTimeout(r, 400))
         const mermaidShot = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-mermaid.png`), mermaidShot.toPNG())
+        // --- debug: inspect mermaid svg structure on the decision-flow doc ---
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.tree-row[data-path$="算法笔记.md"]')?.click()`,
+        )
+        await new Promise((r) => setTimeout(r, 2500))
+        const mermaidDebug = await win.webContents.executeJavaScript(`
+          (() => {
+            const blocks = [...document.querySelectorAll('.mermaid-block')];
+            const b = blocks[0];
+            if (!b) return 'no-block';
+            const svg = b.querySelector('svg');
+            return JSON.stringify({
+              blocks: blocks.length,
+              hasSvg: !!svg,
+              foreignObject: svg?.querySelectorAll('foreignObject').length ?? 0,
+              foDivs: svg?.querySelectorAll('foreignObject div').length ?? 0,
+              textEls: svg?.querySelectorAll('text').length ?? 0,
+              tspans: svg?.querySelectorAll('tspan').length ?? 0,
+              nodeTexts: [...(svg?.querySelectorAll('g.node text') ?? [])].map(t => t.textContent).slice(0, 6),
+              edgeTexts: [...(svg?.querySelectorAll('g.edgeLabel text') ?? [])].map(t => t.textContent).slice(0, 6),
+              foDivTexts: [...(svg?.querySelectorAll('foreignObject div') ?? [])].map(d => d.textContent).slice(0, 6)
+            });
+          })()
+        `)
+        console.log('[mermaid-debug]', mermaidDebug)
+        await win.webContents.executeJavaScript(
+          `document.querySelector('.tree-row[data-path$="README.md"]')?.click()`,
+        )
+        await new Promise((r) => setTimeout(r, 1200))
         await win.webContents.executeJavaScript(
           `document.querySelector('#preview')?.scrollTo?.(0, 0); document.getElementById('preview-scroll')?.scrollTo(0, 0)`,
         )
