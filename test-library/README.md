@@ -1,10 +1,4 @@
-![](assets/img-1791902901409.png)
-![](assets/img-1791902810938.png)
-![](assets/img-1791902743643.png)
-![](assets/img-1791902624782.png)
-![](assets/img-1791902085263.png)
-![](assets/img-1791901985660.png)
-# Markdown Reader 功能演示
+# 墨页 · Inkleaf 功能演示
 
 这是一个覆盖全部渲染特性的演示文档，用于验证阅读器的排版效果。
 

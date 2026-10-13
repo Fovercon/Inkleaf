@@ -328,10 +328,10 @@ export function registerIpc() {
     BrowserWindow.getAllWindows().forEach((w) => {
       if (p) {
         w.setRepresentedFilename(p)
-        w.setTitle(p.split('/').pop() ?? 'Markdown Reader')
+        w.setTitle(p.split('/').pop() ?? '墨页 · Inkleaf')
       } else {
         w.setRepresentedFilename('')
-        w.setTitle('Markdown Reader')
+        w.setTitle('墨页 · Inkleaf')
       }
     })
   })

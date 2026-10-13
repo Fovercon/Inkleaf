@@ -209,11 +209,14 @@ onThemeChange(async () => {
   // mermaid diagrams are baked with a theme; drop the cache and re-render, keep scroll position
   mermaidCache.clear()
   if (!last) return
-  const { scroller, text, filePath } = last
+  const previous = last
+  const seq = renderSeq
+  const { container, scroller, text, filePath } = previous
   const scroll = scroller.scrollTop
   const mermaid = await getMermaid()
+  if (last !== previous || renderSeq !== seq) return
   mermaid.initialize(mermaidInitOptions())
-  await renderPreview(scroller, scroller, text, filePath)
+  await renderPreview(scroller, container, text, filePath)
   scroller.scrollTop = scroll
 })
 

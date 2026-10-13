@@ -1,4 +1,4 @@
-// Generates the app icon: rounded square with a blue gradient and a white "M".
+// Generates the Inkleaf icon: warm paper, an ink outline and a forest-green leaf.
 // Outputs build/icon.icns via sips + iconutil (macOS only).
 import { deflateSync } from 'node:zlib'
 import { writeFileSync, mkdirSync, rmSync } from 'node:fs'
@@ -9,11 +9,25 @@ const S = 1024
 const MARGIN = 64
 const RADIUS = 200
 
-// "M" letter polygon (white), designed on a 1024 grid
-const M_POLY = [
-  [330, 700], [388, 360], [500, 545], [612, 360], [670, 700],
-  [592, 700], [556, 480], [500, 610], [444, 480], [408, 700],
-]
+const PAGE = [[292, 220], [580, 220], [710, 350], [710, 805], [292, 805]]
+const FOLD = [[580, 220], [580, 350], [710, 350]]
+function cubic(a, b, c, d, steps = 80) {
+  return Array.from({ length: steps + 1 }, (_, i) => {
+    const t = i / steps, u = 1 - t
+    return [u**3*a[0] + 3*u*u*t*b[0] + 3*u*t*t*c[0] + t**3*d[0],
+      u**3*a[1] + 3*u*u*t*b[1] + 3*u*t*t*c[1] + t**3*d[1]]
+  })
+}
+const LEAF = [...cubic([470, 625], [428, 445], [650, 415], [800, 422]),
+  ...cubic([800, 422], [790, 620], [602, 731], [470, 625])]
+function onLine(x, y, a, b, width) {
+  const dx = b[0] - a[0], dy = b[1] - a[1]
+  const t = Math.max(0, Math.min(1, ((x-a[0])*dx + (y-a[1])*dy)/(dx*dx + dy*dy)))
+  return (x-a[0]-t*dx)**2 + (y-a[1]-t*dy)**2 <= (width/2)**2
+}
+function onOutline(x, y, poly, width) {
+  return poly.some((a, i) => onLine(x, y, a, poly[(i+1)%poly.length], width))
+}
 
 function inRoundedSquare(x, y) {
   if (x < MARGIN || y < MARGIN || x > S - MARGIN || y > S - MARGIN) return false
@@ -43,18 +57,19 @@ for (let y = 0; y < S; y++) {
       raw[i + 3] = 0
       continue
     }
-    // vertical gradient #2f55d4 -> #7b96ff with a subtle diagonal lift
+    // A soft warm-white tile, matching the reading surface.
     const t = y / S
-    const lift = (x / S) * 0.15
-    raw[i] = Math.round(47 + (123 - 47) * Math.min(1, t * 0.85 + lift))
-    raw[i + 1] = Math.round(85 + (150 - 85) * Math.min(1, t * 0.85 + lift))
-    raw[i + 2] = Math.round(212 + (255 - 212) * Math.min(1, t * 0.85 + lift))
+    const color = [Math.round(251 - 12*t), Math.round(249 - 12*t), Math.round(244 - 17*t)]
+    if (inPoly(x - 9, y - 15, PAGE)) color.splice(0, 3, 225, 226, 211)
+    if (inPoly(x, y, PAGE)) color.splice(0, 3, 255, 253, 247)
+    if (inPoly(x, y, FOLD)) color.splice(0, 3, 224, 231, 213)
+    if (onOutline(x, y, PAGE, 12) || onLine(x, y, [580, 220], [580, 350], 12) || onLine(x, y, [580, 350], [710, 350], 12)) color.splice(0, 3, 66, 85, 65)
+    if (inPoly(x, y, LEAF)) color.splice(0, 3, 72, 112, 82)
+    if (onLine(x, y, [413, 738], [656, 527], 14)) color.splice(0, 3, 66, 100, 73)
+    raw[i] = color[0]
+    raw[i + 1] = color[1]
+    raw[i + 2] = color[2]
     raw[i + 3] = 255
-    if (inPoly(x, y, M_POLY)) {
-      raw[i] = 255
-      raw[i + 1] = 255
-      raw[i + 2] = 255
-    }
   }
 }
 

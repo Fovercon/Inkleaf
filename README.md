@@ -1,17 +1,32 @@
-# Markdown Reader
+# 墨页 · Inkleaf
 
-个人 Markdown 阅读与编辑器，macOS 桌面应用。对标 Typora / Obsidian / Mark Text 的阅读、编辑、文件管理与导出体验。
+让文字，安静生长。
+
+面向 macOS 的个人 Markdown 阅读与编辑器。暖白纸面、墨色文字与叶绿色点缀，让阅读与写作回归舒适、专注。
+
+![墨页 · Inkleaf 阅读与编辑界面](docs/images/workspace.png)
 
 ## 快速开始
 
 ```bash
 npm install       # 安装依赖（.npmrc 已配置国内镜像）
 npm start         # 开发模式启动
-npm run test:ui   # 自动化测试：加载测试书库、全功能验证并截图到 verify/
-npm run package   # 打包 dist/mac-arm64/Markdown Reader.app
+npm run test:ui   # 使用独立配置和测试书库副本，回归验证并截图到 verify/
+npm run package   # 打包 dist/mac-arm64/Inkleaf.app
 ```
 
-把 `Markdown Reader.app` 拖入 `/Applications` 即可日常使用；Finder 中右键任意 `.md` 文件 → 打开方式 → Markdown Reader。
+把 `Inkleaf.app` 拖入 `/Applications` 即可日常使用；Finder 中右键任意 `.md` 文件 → 打开方式 → 墨页 · Inkleaf。
+
+## 视觉设计
+
+- 暖白纸面 `#FBF9F4`、墨色文字 `#2C342E`、叶绿点缀 `#487052`。
+- 书页与叶片标识、统一 SVG 线条图标、宋体标题与清晰的面板层级。
+- 欢迎页、书库、编辑器、阅读预览、大纲与底部状态栏采用一致的配色。
+- 保留五套主题和字号调节；小窗口自动分配面板空间，键盘焦点清晰可见。
+
+![欢迎页](docs/images/welcome.png)
+
+![深色主题](docs/images/dark.png)
 
 ## 功能总览
 

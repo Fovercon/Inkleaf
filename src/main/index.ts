@@ -24,6 +24,12 @@ const MIME: Record<string, string> = {
   '.ico': 'image/x-icon',
 }
 
+// Keep the existing profile so rebranding preserves libraries, themes and recents.
+app.setPath('userData', process.env.MDR_TEST
+  ? path.join(app.getPath('temp'), `inkleaf-ui-${process.pid}`)
+  : path.join(app.getPath('appData'), 'my-markdown-reader'))
+app.setName('Inkleaf')
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
@@ -105,13 +111,20 @@ app.on('window-all-closed', () => {
 })
 
 async function createWindow() {
+  // UI checks edit a private copy, keeping the source fixtures and real profile intact.
+  const testLibrary = path.join(app.getPath('userData'), 'test-library')
+  if (process.env.MDR_TEST) {
+    await fsp.cp(path.resolve(process.cwd(), 'test-library'), testLibrary, { recursive: true })
+  }
   const win = new BrowserWindow({
     width: 1360,
     height: 880,
     minWidth: 780,
     minHeight: 540,
     titleBarStyle: 'hiddenInset',
-    backgroundColor: '#fafafa',
+    title: '墨页 · Inkleaf',
+    backgroundColor: '#fbf9f4',
+    trafficLightPosition: { x: 18, y: 23 },
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -132,7 +145,7 @@ async function createWindow() {
   })
 
   const query = process.env.MDR_TEST
-    ? `?test=1&lib=${encodeURIComponent(path.resolve(process.cwd(), 'test-library'))}`
+    ? `?test=1&lib=${encodeURIComponent(testLibrary)}`
     : ''
   await win.loadURL(`app://local/index.html${query}`)
 
@@ -140,11 +153,37 @@ async function createWindow() {
     // give the renderer time to load the library, render markdown + mermaid, then capture proof
     const round = process.env.MDR_ROUND ?? '0'
     setTimeout(async () => {
+      let failed = false
       try {
         const dir = path.join(process.cwd(), 'verify')
         fs.mkdirSync(dir, { recursive: true })
+        await win.webContents.executeJavaScript(`document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: {theme: 'light'}}))`)
+        await new Promise((r) => setTimeout(r, 500))
         const img = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}.png`), img.toPNG())
+        win.webContents.send('menu', 'close-library')
+        await new Promise((r) => setTimeout(r, 500))
+        const welcomeOk = await win.webContents.executeJavaScript(`getComputedStyle(document.getElementById('empty-state')).display === 'flex'`)
+        if (!welcomeOk) throw new Error('Welcome screen did not appear after closing the library')
+        fs.writeFileSync(path.join(dir, `round${round}-welcome.png`), (await win.webContents.capturePage()).toPNG())
+        win.setSize(780, 540)
+        await new Promise((r) => setTimeout(r, 500))
+        fs.writeFileSync(path.join(dir, `round${round}-welcome-small.png`), (await win.webContents.capturePage()).toPNG())
+        win.webContents.send('open-path', path.join(testLibrary, 'README.md'))
+        await new Promise((r) => setTimeout(r, 1600))
+        const layoutOk = await win.webContents.executeJavaScript(`(() => {
+          const preview = document.getElementById('preview-pane').getBoundingClientRect();
+          const toolbar = document.getElementById('toolbar').getBoundingClientRect();
+          const footer = document.getElementById('statusbar').getBoundingClientRect();
+          return preview.width >= 250 && toolbar.right <= innerWidth && document.body.scrollWidth <= innerWidth
+            && footer.bottom <= innerHeight && footer.top >= innerHeight - 31
+            && !!document.querySelector('#preview-scroll > #preview.md-preview');
+        })()`)
+        if (!layoutOk) throw new Error('Small-window layout overflow')
+        console.log('[layout-check] OK at 780x540')
+        fs.writeFileSync(path.join(dir, `round${round}-small.png`), (await win.webContents.capturePage()).toPNG())
+        win.setSize(1360, 880)
+        await new Promise((r) => setTimeout(r, 500))
         // large-document performance probe: open the big fixture, log render timings, capture, go back
         await win.webContents.executeJavaScript(
           `document.querySelector('.tree-row[data-path$="大文档.md"]')?.click()`,
@@ -199,6 +238,7 @@ async function createWindow() {
         )
         await new Promise((r) => setTimeout(r, 2600))
         console.log(`[task-check] before=${before} after=${after} ${toggled ? 'OK' : 'FAIL'}`)
+        if (!toggled) throw new Error('Task checkbox did not update the source')
         const task = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-task.png`), task.toPNG())
         // exercise the new navigation: recent-files tab and outline folding
@@ -226,7 +266,7 @@ async function createWindow() {
           (() => { const i = document.getElementById('tree-filter-input'); i.value = ''; i.dispatchEvent(new Event('input', {bubbles: true})) })()
         `)
         // rename e2e: context menu -> 重命名 -> inline input -> Enter
-        const libPath = path.resolve(process.cwd(), 'test-library')
+        const libPath = testLibrary
         const renameResult = await win.webContents.executeJavaScript(`
           (async () => {
             const folderRow = document.querySelector('.tree-row[data-path$="/笔记"]');
@@ -450,9 +490,10 @@ async function createWindow() {
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
+        failed = true
         console.error('capture failed', err)
       } finally {
-        app.quit()
+        app.exit(failed ? 1 : 0)
       }
     }, 8000)
   }
@@ -508,7 +549,7 @@ function buildMenu() {
         { label: '切换预览面板', accelerator: 'CmdOrCtrl+2', click: () => send('toggle-preview') },
         { label: '切换大纲', accelerator: 'CmdOrCtrl+3', click: () => send('toggle-outline') },
         { type: 'separator' },
-        { label: '浅色主题', click: () => send('theme-light') },
+        { label: '暖白纸面', click: () => send('theme-light') },
         { label: '羊皮纸', click: () => send('theme-sepia') },
         { label: '护眼绿', click: () => send('theme-green') },
         { label: '深色主题', click: () => send('theme-dark') },

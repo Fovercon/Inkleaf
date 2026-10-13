@@ -1,7 +1,7 @@
 {
-  "name": "my-markdown-reader",
+  "name": "inkleaf",
   "version": "0.1.0",
-  "description": "Personal Markdown reader & editor for macOS",
+  "description": "墨页 · Inkleaf — a quiet place to read and write Markdown",
   "main": "out/main.js",
   "author": "wangyuan",
   "license": "UNLICENSED",
@@ -11,11 +11,12 @@
     "typecheck": "tsc --noEmit",
     "start": "node esbuild.mjs && electron .",
     "test:ui": "node esbuild.mjs && MDR_TEST=1 electron .",
-    "package": "node esbuild.mjs && electron-builder --mac dir --arm64"
+    "package": "node esbuild.mjs && electron-builder --mac dir --arm64",
+    "icon": "node scripts/make-icon.mjs"
   },
   "build": {
-    "appId": "com.wangyuan.markdown-reader",
-    "productName": "Markdown Reader",
+    "appId": "com.fovercon.inkleaf",
+    "productName": "Inkleaf",
     "asar": false,
     "directories": {
       "output": "dist"
@@ -42,9 +43,14 @@
       "target": [
         {
           "target": "dir",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
-      ]
+      ],
+      "extendInfo": {
+        "CFBundleDisplayName": "墨页 · Inkleaf"
+      }
     }
   },
   "devDependencies": {

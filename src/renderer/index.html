@@ -3,68 +3,99 @@
 <head>
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' mdasset: data: blob: https:; font-src 'self'; connect-src 'self' mdasset:; object-src 'none'; base-uri 'none'; form-action 'none'" />
-<title>Markdown Reader</title>
+<title>墨页 · Inkleaf</title>
 <link rel="stylesheet" href="./renderer.css" />
 </head>
 <body data-theme="light">
+<svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <defs>
+    <symbol id="i-brand" viewBox="0 0 48 48"><path d="M12 6h17l7 7v28H12z" fill="currentColor" opacity=".12"/><path d="M12 6h17l7 7v28H12zM29 6v8h7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M21 29C19 20 29 18 38 18c0 10-9 16-17 11Z" fill="currentColor"/><path d="m18 35 13-11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h10v13H3zM3 10h18"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1M5.5 11h1"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="m15 4 5 5M4 20l1-6L16 3l5 5L10 19zM13 20h8"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6C8 3 5 3 2 4v15c3-1 6-1 10 2 4-3 7-3 10-2V4c-3-1-6-1-10 2zM12 6v15"/></symbol>
+    <symbol id="i-outline" viewBox="0 0 24 24"><path d="M8 6h13M8 12h10M8 18h7M3 6h1M3 12h1M3 18h1"/></symbol>
+    <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="m14 7-5 5 5 5"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="m10 7 5 5-5 5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 12 6-6 6 6M12 6v13"/></symbol>
+  </defs>
+</svg>
 <header id="titlebar">
-  <div id="toolbar">
-    <button id="btn-open-folder" title="打开文件夹 (⇧⌘O)" class="tb">📁</button>
-    <button id="btn-open-file" title="打开文件 (⌘O)" class="tb">📄</button>
-    <button id="btn-new-file" title="新建文件 (⌘N)" class="tb">＋</button>
+  <div class="app-brand" aria-label="墨页 · Inkleaf"><svg class="brand-mark" aria-hidden="true"><use href="#i-brand"/></svg><span>墨页<small>INKLEAF</small></span></div>
+  <div id="file-title"></div>
+  <div id="toolbar" role="toolbar" aria-label="文件与视图工具">
+    <div class="toolbar-group">
+      <button id="btn-open-folder" title="打开文件夹 (⇧⌘O)" aria-label="打开文件夹" class="tb"><svg class="icon"><use href="#i-folder"/></svg></button>
+      <button id="btn-open-file" title="打开文件 (⌘O)" aria-label="打开文件" class="tb"><svg class="icon"><use href="#i-file"/></svg></button>
+      <button id="btn-new-file" title="新建文件 (⌘N)" aria-label="新建文件" class="tb"><svg class="icon"><use href="#i-plus"/></svg></button>
+    </div>
     <span class="tb-sep"></span>
-    <button id="btn-toggle-sidebar" title="书库栏 (⌘\)" class="tb">☰</button>
-    <button id="btn-toggle-editor" title="编辑面板 (⌘1)" class="tb">✎</button>
-    <button id="btn-toggle-preview" title="预览面板 (⌘2)" class="tb">▣</button>
-    <button id="btn-toggle-outline" title="大纲 (⌘3)" class="tb">≣</button>
+    <div class="toolbar-group">
+      <button id="btn-toggle-sidebar" title="书库栏 (⌘\)" aria-label="显示书库栏" class="tb"><svg class="icon"><use href="#i-sidebar"/></svg></button>
+      <button id="btn-toggle-editor" title="编辑面板 (⌘1)" aria-label="显示编辑面板" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
+      <button id="btn-toggle-preview" title="阅读面板 (⌘2)" aria-label="显示阅读面板" class="tb"><svg class="icon"><use href="#i-book"/></svg></button>
+      <button id="btn-toggle-outline" title="大纲 (⌘3)" aria-label="显示大纲" class="tb"><svg class="icon"><use href="#i-outline"/></svg></button>
+    </div>
     <span class="tb-sep"></span>
-    <button id="btn-theme" title="切换主题（自动/浅色/深色）" class="tb">◐</button>
-    <div id="file-title"></div>
+    <button id="btn-theme" title="切换主题：跟随系统 / 暖白 / 羊皮纸 / 护眼绿 / 深色" aria-label="切换主题" class="tb"><svg class="icon"><use href="#i-theme"/></svg></button>
   </div>
-  <div id="save-state"></div>
-  <div id="editor-stats"></div>
 </header>
 <div id="workspace">
-  <button id="sidebar-expand" title="展开书库栏 (⌘\)">›</button>
-  <aside id="sidebar">
-    <div id="library-title"><span class="lib-icon">📚</span><span id="library-name">书库</span></div>
-    <div class="sidebar-tabs">
-      <button id="tab-files" class="stab active">文件</button>
-      <button id="tab-recent" class="stab">最近</button>
+  <button id="sidebar-expand" title="展开书库栏 (⌘\)" aria-label="展开书库栏"><svg class="icon"><use href="#i-right"/></svg></button>
+  <aside id="sidebar" aria-label="书库">
+    <div class="sidebar-eyebrow">YOUR LIBRARY</div>
+    <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span></div>
+    <div class="sidebar-tabs" role="group" aria-label="书库视图">
+      <button id="tab-files" class="stab active">全部文件</button>
+      <button id="tab-recent" class="stab">最近打开</button>
     </div>
-    <div id="tree-filter"><input id="tree-filter-input" type="search" placeholder="过滤文件…" /></div>
+    <div id="tree-filter"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="tree-filter-input" aria-label="过滤书库文件" type="search" placeholder="查找文件…" /></div>
     <div id="file-tree"></div>
     <div id="recent-list"></div>
-    <button id="sidebar-collapse" title="收起书库栏 (⌘\)">‹</button>
+    <div class="sidebar-note"><span class="leaf-dot"></span>一页一页，积累所思。</div>
+    <button id="sidebar-collapse" title="收起书库栏 (⌘\)" aria-label="收起书库栏"><svg class="icon"><use href="#i-left"/></svg></button>
   </aside>
   <div class="resizer" id="resizer-sidebar"></div>
-  <section id="editor-pane"><div id="editor-host"></div></section>
+  <section id="editor-pane" aria-label="Markdown 编辑器"><div class="pane-heading"><span>编辑</span><small>MARKDOWN</small></div><div id="editor-host"></div></section>
   <div class="resizer" id="resizer-editor"></div>
-  <section id="preview-pane">
+  <section id="preview-pane" aria-label="阅读预览">
+    <div class="pane-heading"><span>阅读</span><small>PREVIEW</small></div>
     <div id="breadcrumb"></div>
-    <div id="preview-scroll">
-      <div id="preview" class="md-preview"></div>
-    </div>
-    <button id="back-top" title="返回顶部">↑</button>
+    <div id="preview-scroll"><div id="preview" class="md-preview"></div></div>
+    <button id="back-top" title="返回顶部" aria-label="返回顶部"><svg class="icon"><use href="#i-up"/></svg></button>
   </section>
   <div class="resizer" id="resizer-outline"></div>
-  <aside id="outline-pane">
-    <div class="pane-header">大纲</div>
-    <nav id="outline"></nav>
+  <aside id="outline-pane" aria-label="文档大纲">
+    <div class="pane-heading"><span>大纲</span><small>OUTLINE</small></div>
+    <nav id="outline" aria-label="标题导航"></nav>
   </aside>
 </div>
 <div id="empty-state">
   <div class="empty-card">
-    <div class="empty-icon">📖</div>
-    <h1>Markdown Reader</h1>
-    <p>打开一个文件夹作为你的书库，或直接打开单个 Markdown 文件</p>
+    <div class="empty-icon"><svg aria-hidden="true"><use href="#i-brand"/></svg></div>
+    <div class="empty-eyebrow">A QUIET PLACE FOR YOUR WORDS</div>
+    <h1>墨页<span>Inkleaf</span></h1>
+    <p class="empty-tagline">让文字，安静生长。</p>
+    <p class="empty-description">收藏一份灵感，展开一页思绪。<br>从你的 Markdown 文件或书库开始。</p>
     <div class="empty-actions">
-      <button id="empty-open-folder" class="primary">打开文件夹</button>
-      <button id="empty-open-file">打开文件</button>
+      <button id="empty-open-folder" class="primary"><svg class="icon"><use href="#i-folder"/></svg>打开书库<kbd>⇧⌘O</kbd></button>
+      <button id="empty-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件<kbd>⌘O</kbd></button>
     </div>
-    <p class="empty-hint">也可以把文件夹或 .md 文件直接拖进窗口</p>
+    <p class="empty-hint">也可以将文件夹或 .md 文件拖到这里</p>
+    <div class="empty-rule"></div>
+    <span class="empty-footnote">READ SLOWLY. WRITE FREELY.</span>
   </div>
 </div>
+<footer id="statusbar">
+  <span class="status-brand"><span class="leaf-dot"></span>让文字，安静生长。</span>
+  <span id="save-state" role="status" aria-live="polite"></span>
+  <span id="editor-stats"></span>
+  <span class="status-shortcut">快速切换 <kbd>⌘P</kbd></span>
+</footer>
 <script type="module" src="./renderer.js"></script>
 </body>
 </html>

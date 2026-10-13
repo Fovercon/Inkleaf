@@ -47,18 +47,29 @@ function applyLayout() {
   editorPane.classList.toggle('pane-collapsed', s.collapsed.editor)
   previewPane.classList.toggle('pane-collapsed', s.collapsed.preview)
   outlinePane.classList.toggle('pane-collapsed', s.collapsed.outline)
-  sidebar.style.width = s.collapsed.sidebar ? '' : `${s.widths.sidebar}px`
+  // Keep all four panes usable when the window is narrowed, without changing
+  // the user's saved widths for the next full-size window.
+  const width = $('#workspace').clientWidth
+  const desiredWidth = (s.collapsed.sidebar ? 0 : s.widths.sidebar)
+    + (s.collapsed.outline ? 0 : s.widths.outline)
+    + (!s.collapsed.editor && !s.collapsed.preview ? s.widths.editor : 0)
+  const scale = Math.min(1, Math.max(0, width - 260) / Math.max(1, desiredWidth))
+  const sidebarWidth = s.widths.sidebar * scale
+  const outlineWidth = s.widths.outline * scale
+  sidebar.style.width = s.collapsed.sidebar ? '' : `${sidebarWidth}px`
   // with the preview hidden the editor takes over the full area
   const editorFills = s.collapsed.preview && !s.collapsed.editor
   editorPane.classList.toggle('fill', editorFills)
-  editorPane.style.width = editorFills ? '' : `${s.widths.editor}px`
-  outlinePane.style.width = `${s.widths.outline}px`
+  editorPane.style.width = editorFills ? '' : `${s.widths.editor * scale}px`
+  outlinePane.style.width = `${outlineWidth}px`
   $('#resizer-sidebar').classList.toggle('pane-collapsed', s.collapsed.sidebar)
   $('#resizer-editor').classList.toggle('pane-collapsed', s.collapsed.editor || s.collapsed.preview)
   $('#resizer-outline').classList.toggle('pane-collapsed', s.collapsed.outline)
   $('#sidebar-collapse').classList.toggle('pane-collapsed', s.collapsed.sidebar)
   $('#sidebar-expand').classList.toggle('visible', s.collapsed.sidebar)
-  $('#btn-toggle-sidebar').classList.toggle('active', s.collapsed.sidebar)
+  for (const key of ['sidebar', 'editor', 'preview', 'outline'] as const) {
+    $(`#btn-toggle-${key}`).setAttribute('aria-pressed', String(!s.collapsed[key]))
+  }
   emptyState.classList.toggle('visible', !runtime.currentFile)
 }
 
@@ -92,6 +103,7 @@ function setupResizer(handle: HTMLElement, pane: HTMLElement, key: 'sidebar' | '
       handle.classList.remove('active')
       getState().widths[key] = Math.round(pane.getBoundingClientRect().width)
       saveState()
+      applyLayout()
     }
     handle.addEventListener('pointermove', move)
     handle.addEventListener('pointerup', up)
@@ -153,7 +165,7 @@ async function openFile(path: string, opts?: { line?: number }): Promise<boolean
     editor.openFile(path, content)
     const name = path.split('/').pop() ?? path
     fileTitle.textContent = name
-    document.title = `${name} — Markdown Reader`
+    document.title = `${name} — 墨页 · Inkleaf`
     await renderPreview(previewScroll, preview, content, path)
     buildOutline(preview, outlineNav)
     updateActiveHeading(preview, outlineNav)
@@ -186,7 +198,7 @@ function closeFile() {
   preview.innerHTML = ''
   outlineNav.innerHTML = ''
   fileTitle.textContent = ''
-  document.title = 'Markdown Reader'
+  document.title = '墨页 · Inkleaf'
   saveStateEl.textContent = ''
   updateBreadcrumb()
   applyLayout()
@@ -261,6 +273,8 @@ function setSidebarTab(tab: 'files' | 'recent') {
   saveState()
   $('#tab-files').classList.toggle('active', tab === 'files')
   $('#tab-recent').classList.toggle('active', tab === 'recent')
+  $('#tab-files').setAttribute('aria-pressed', String(tab === 'files'))
+  $('#tab-recent').setAttribute('aria-pressed', String(tab === 'recent'))
   treeHost.style.display = tab === 'files' ? '' : 'none'
   $('#recent-list').classList.toggle('visible', tab === 'recent')
   if (tab === 'recent') renderRecent()
@@ -508,7 +522,7 @@ function setupEditorCallbacks() {
     saveStateEl.textContent = d ? '● 未保存' : '已保存'
     saveStateEl.classList.toggle('dirty', d)
     const name = runtime.currentFile?.split('/').pop() ?? ''
-    document.title = `${d ? '● ' : ''}${name} — Markdown Reader`
+    document.title = `${d ? '● ' : ''}${name} — 墨页 · Inkleaf`
     void window.mdr.setWindowEdited(d && !!runtime.currentFile)
   }
   editor.onStatsChange = (s) => {
@@ -649,6 +663,7 @@ async function boot() {
   setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)
   setupResizer($('#resizer-editor'), editorPane, 'editor', 240, 1400)
   setupResizer($('#resizer-outline'), outlinePane, 'outline', 160, 420)
+  window.addEventListener('resize', applyLayout)
 
   setupSync(editor, previewScroll, () => {
     const c = getState().collapsed
@@ -676,7 +691,7 @@ async function boot() {
       tree.markSelected(remapped)
       const name = remapped.split('/').pop() ?? remapped
       fileTitle.textContent = name
-      document.title = `${name} — Markdown Reader`
+      document.title = `${name} — 墨页 · Inkleaf`
       updateBreadcrumb()
     }
     // migrate recent list + remembered scroll positions

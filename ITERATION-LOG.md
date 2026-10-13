@@ -240,3 +240,14 @@ Markdown Reader 自动化打磨记录。每轮流程：调研业界标杆（Typo
 - `npm start` — 启动应用
 - `npm run test:ui` — 测试模式：自动打开 test-library、8 秒后截图到 verify/ 并退出
 - `npm run package` — electron-builder 产出 dist/mac-arm64/Markdown Reader.app
+
+
+## 2026-10-13 — 墨页 · Inkleaf 品牌与界面更新
+
+- 项目包名改为 `inkleaf`，应用包改为 `Inkleaf.app`，界面名称统一为「墨页 · Inkleaf」。
+- 暖白纸面、墨色文字与叶绿色点缀；加入书页与叶片图标、欢迎页、宋体阅读标题、面板标识和底部状态栏。
+- 使用 SVG 线条图标替换工具栏 emoji，补全按钮名称、状态与键盘焦点；支持减少动态效果的系统偏好。
+- 小窗口按可用宽度分配面板空间，保留用户保存的宽度。
+- 修复切换主题时误将 Markdown 渲染到滚动容器的问题，保留预览 DOM、样式和任务交互。
+- UI 回归改为独立配置及书库副本，验证欢迎页、780×540 布局、任务回写、重命名、快速切换、搜索、拖拽、插图、Mermaid、主题与 PDF/HTML 导出。
+- 截图见 `docs/images/`，详细回归截图保存在本地 `verify/roundinkleaf*.png`。

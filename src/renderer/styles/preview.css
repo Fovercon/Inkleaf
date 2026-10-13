@@ -3,9 +3,9 @@
 .md-preview {
   max-width: 800px;
   margin: 0 auto;
-  padding: 34px 44px 160px;
+  padding: 32px clamp(24px, 4vw, 52px) 160px;
   font-size: calc(16px * var(--font-scale, 1));
-  line-height: 1.8;
+  line-height: 1.9;
   color: var(--text);
   word-wrap: break-word;
   -webkit-font-smoothing: antialiased;
@@ -15,16 +15,17 @@
 /* ---------- headings ---------- */
 .md-preview h1, .md-preview h2, .md-preview h3,
 .md-preview h4, .md-preview h5, .md-preview h6 {
-  font-weight: 700;
-  line-height: 1.4;
+  font-family: 'Songti SC', 'STSong', Georgia, serif;
+  font-weight: 600;
+  line-height: 1.45;
   margin: 1.6em 0 0.65em;
   scroll-margin-top: 16px;
 }
 .md-preview > h1:first-child,
 .md-preview > h2:first-child { margin-top: 0.15em; }
 .md-preview h1 {
-  font-size: 1.75em;
-  letter-spacing: 0.01em;
+  font-size: 2em;
+  letter-spacing: 0.025em;
   padding-bottom: 0.35em;
   border-bottom: 1px solid var(--border);
 }
@@ -69,7 +70,9 @@
 .md-preview blockquote {
   margin: 1.1em 0;
   padding: 0.1em 1.1em;
-  border-left: 4px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 55%, transparent);
+  border-radius: 0 8px 8px 0;
   color: var(--text-dim);
 }
 .md-preview blockquote p { margin: 0.55em 0; }
@@ -85,7 +88,7 @@
 .md-preview pre {
   background: var(--code-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   padding: 14px 18px;
   overflow: auto;
   margin: 1.1em 0;

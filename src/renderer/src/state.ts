@@ -19,7 +19,7 @@ const DEFAULTS: UiState = {
   theme: 'auto',
   fontScale: 1,
   collapsed: { sidebar: false, editor: false, preview: false, outline: false },
-  widths: { sidebar: 240, editor: 460, outline: 220 },
+  widths: { sidebar: 224, editor: 400, outline: 184 },
   expandedDirs: [],
   recent: [],
   scrollByPath: {},
