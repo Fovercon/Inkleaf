@@ -314,6 +314,9 @@ export function registerIpc() {
   })
 
   ipcMain.handle('shell:reveal', (_e, p: string) => {
+    // CI has no desktop file manager. xdg-open's browser fallback can inherit
+    // the test log pipe and keep it open after Electron has exited.
+    if (process.env.MDR_TEST) return
     shell.showItemInFolder(p)
   })
 

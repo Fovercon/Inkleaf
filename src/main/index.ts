@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { registerIpc, getLibraryRoot, rebuildDockMenu } from './ipc'
 import { initializeUpdater } from './updater'
 import { markdownFromArguments } from './openPath'
+import { appImageTarget } from './linuxAppImage'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -178,8 +179,16 @@ async function createWindow() {
             && typeof window.mdr.readFile === 'function'
             && document.getElementById('btn-open-file').title.includes(${JSON.stringify(expectedShortcut)});
         })()`)
-        if (!platformOk || !readyWindows.has(win.webContents.id)) {
+        if (!platformOk || !readyWindows.has(win.webContents.id)
+          || app.commandLine.hasSwitch('no-sandbox') || app.commandLine.hasSwitch('disable-setuid-sandbox')) {
           throw new Error('Platform shortcuts, isolated preload or sandbox startup failed')
+        }
+        if (process.platform === 'linux' && app.isPackaged) {
+          const kind = process.env.APPIMAGE ? 'appimage' : 'deb'
+          const actualKind = await win.webContents.executeJavaScript('window.mdr.getUpdateState().then(state => state.installationKind)')
+          if (actualKind !== kind) throw new Error('Linux installation type was not detected correctly')
+          if (kind === 'appimage') await appImageTarget(process.env.APPIMAGE, process.arch)
+          console.log(`[installation-check] ${kind} update mode OK`)
         }
         console.log(`[platform-check] ${expectedPlatform} shortcuts, preload and sandbox OK`)
         const dir = path.join(process.cwd(), 'verify')

@@ -55,10 +55,11 @@ jobs:
           npm run test:platform
 
       - name: Exercise real Electron UI under Xvfb with sandbox enabled
+        timeout-minutes: 5
         shell: bash
         run: |
           mkdir -p verify
-          MDR_TEST=1 MDR_ROUND="linux-${{ matrix.arch }}-development" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:ui -- --disable-gpu 2>&1 | tee "verify/linux-${{ matrix.arch }}-development.log"
+          MDR_TEST=1 MDR_ROUND="linux-${{ matrix.arch }}-development" timeout --kill-after=10s 240s dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:ui -- --disable-gpu 2>&1 | tee "verify/linux-${{ matrix.arch }}-development.log"
           grep -q 'verify screenshot written' "verify/linux-${{ matrix.arch }}-development.log"
 
       - name: Verify platform shortcuts and window chrome
@@ -89,4 +90,41 @@ jobs:
           name: linux-proof-${{ matrix.arch }}
           if-no-files-found: ignore
           retention-days: 7
-          path: verify/
+          path: |
+            verify/roundlinux-*
+            verify/linux-*.log
+
+  ubuntu24-x64:
+    name: Ubuntu 24.04 x64 compatibility
+    needs: linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare Ubuntu 24.04 desktop and sandbox profiles
+        run: bash scripts/prepare-linux-ci.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: dist
+      - name: Restore AppImage executable permission after artifact download
+        run: chmod +x dist/Inkleaf-*-linux-x64.AppImage
+      - name: Run the Ubuntu 22.04-built AppImage and deb on Ubuntu 24.04
+        run: bash scripts/verify-linux-packages.sh x64
+      - name: Keep compatibility screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-proof-ubuntu24-x64
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            verify/roundlinux-*
+            verify/linux-*.log

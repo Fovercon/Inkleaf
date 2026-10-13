@@ -144,7 +144,10 @@ export function downloadUpdate(): UpdateState {
           if (percent !== lastPercent) { lastPercent = percent; setState('downloading', '正在下载更新…', percent) }
         }
         await file.sync()
-      } finally { await file.close() }
+      } finally {
+        await reader.cancel().catch(() => {})
+        await file.close()
+      }
       if (controller.signal.aborted) throw new Error('下载已取消')
       if (received !== update.size || hash.digest('hex') !== update.sha256) throw new Error('更新包完整性校验失败，请重新下载')
       if (state.installationKind === 'appimage') await validateAppImageFile(filename, process.arch)

@@ -23,7 +23,7 @@ npm run release:linux # 在原生 Linux x64/arm64 上构建 AppImage、deb 与 S
 
 ### Linux 安装
 
-0.3.0 提供 x64 与 arm64 的 AppImage 和 Debian 安装包。Ubuntu/Debian 桌面优先安装 `.deb`，会添加应用菜单入口与 Markdown 文件关联：
+0.3.0 提供 x64 与 arm64 的 AppImage 和 Debian 安装包。发布验证矩阵覆盖 Ubuntu 22.04 x64、Ubuntu 24.04 x64 与 Ubuntu 24.04 arm64；Debian 建议使用 12 或更新版本，尚未单独实测 Debian。旧版 glibc 系统不在本次兼容性承诺中。Ubuntu/Debian 桌面优先安装 `.deb`，会添加应用菜单入口与 Markdown 文件关联：
 
 ```bash
 sudo apt install ./Inkleaf-0.3.0-linux-x64.deb
@@ -55,7 +55,7 @@ macOS 0.1.0 没有更新器，需要先手动安装一次 0.2.2 或更新版本�
 
 将 `package.json` 和 `package-lock.json` 的项目版本一起升级（例如 0.3.1），提交修改后推送对应的 `v0.3.1` 标签。标签版本必须与 `package.json` 完全相同，发布渠道仅接受 `x.y.z` 正式版本。
 
-仓库的「Build release」工作流同时构建 macOS arm64、Linux x64 与 Linux arm64。Linux 在真实 Ubuntu runner 上运行原有 UI 回归、平台快捷键检查，并验证打包的 AppImage 和实际安装的 `.deb`。所有平台通过后，由一个发布任务汇总完整附件并生成同一份 Release 草稿。以 0.3.0 为例：
+仓库的「Build release」工作流同时构建 macOS arm64、Linux x64 与 Linux arm64。Linux 在真实 Ubuntu runner 上运行原有 UI 回归、平台快捷键检查，并验证打包的 AppImage 和实际安装的 `.deb`；另外复用 Ubuntu 22.04 的 x64 产物在 Ubuntu 24.04 再次验证。所有平台通过后，由一个发布任务汇总完整附件并生成同一份 Release 草稿。以 0.3.0 为例：
 
 - `Inkleaf-0.3.0-mac-arm64.zip`：ZIP 根目录是 `Inkleaf.app`，保留应用包的符号链接。
 - `Inkleaf-0.3.0-linux-x64.AppImage` / `.deb`：x64 便携版与 Debian 安装包。

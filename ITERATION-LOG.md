@@ -277,7 +277,7 @@ Markdown Reader 自动化打磨记录。每轮流程：调研业界标杆（Typo
 
 - 增加原生 Linux x64/arm64 的 AppImage 和 Debian 安装包，保留 macOS arm64 更新 ZIP；统一附件命名并生成 SHA-256。
 - Linux 图标直接使用保存的 PNG；Debian 桌面入口、Markdown 文件关联、沙箱助手权限由安装脚本维护。
-- Linux 发布验证在 Ubuntu 22.04 x64 与 Ubuntu 24.04 arm64 runner 中执行：类型检查、安全与平台测试、Xvfb 原有 UI 回归、AppImage 提取及真实运行、Debian 包实际安装后的完整 UI 回归。
+- Linux 发布验证在 Ubuntu 22.04 x64 与 Ubuntu 24.04 arm64 runner 中执行：类型检查、安全与平台测试、Xvfb 原有 UI 回归、AppImage 提取及真实运行、Debian 包实际安装后的完整 UI 回归；Ubuntu 24.04 x64 兼容性任务复用同一份 x64 产物再验证，不生成另一套发布附件。
 - Chromium 沙箱保持启用；Ubuntu 24.04 CI 为开发与便携应用路径配置精确的 AppArmor 用户命名空间授权，不修改系统全局限制。桌面默认环境推荐 `.deb`。
 - 多平台构建任务仅上传已验证的附件；统一发布任务等待 macOS 和两种 Linux 架构全部成功后创建完整草稿，核对服务器摘要后才可发布。
 - 验证状态：本地检查与真实 Linux CI 正在进行；此条在最终结果确认后补充。
