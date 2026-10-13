@@ -92,6 +92,7 @@ jobs:
           path: |
             verify/roundlinux-*
             verify/linux-*.log
+            verify/linux-*-boot-ack.json
 
   ubuntu24-x64:
     name: Ubuntu 24.04 x64 compatibility
@@ -127,3 +128,4 @@ jobs:
           path: |
             verify/roundlinux-*
             verify/linux-*.log
+            verify/linux-*-boot-ack.json

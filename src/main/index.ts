@@ -3,7 +3,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { registerIpc, getLibraryRoot, rebuildDockMenu } from './ipc'
+import { registerIpc, getLibraryRoot, rebuildDockMenu, stopWatch } from './ipc'
 import { initializeUpdater } from './updater'
 import { markdownFromArguments } from './openPath'
 import { appImageTarget } from './linuxAppImage'
@@ -33,6 +33,25 @@ app.setPath('userData', process.env.MDR_TEST
   ? path.join(app.getPath('temp'), `inkleaf-ui-${process.pid}`)
   : path.join(app.getPath('appData'), 'my-markdown-reader'))
 app.setName('Inkleaf')
+
+// Release filesystem resources before Chromium starts its shutdown sequence.
+let closingResources = false, resourcesClosed = false
+app.on('before-quit', event => {
+  if (resourcesClosed) return
+  event.preventDefault()
+  if (closingResources) return
+  closingResources = true
+  if (process.env.MDR_TEST) console.log('[quit-check] stopping file watcher')
+  void stopWatch().finally(() => {
+    resourcesClosed = true
+    if (process.env.MDR_TEST) console.log('[quit-check] watcher stopped')
+    app.quit()
+  })
+})
+if (process.env.MDR_TEST) {
+  app.on('will-quit', () => console.log('[quit-check] all windows closed; will quit'))
+  process.once('exit', code => console.log(`[quit-check] process exit ${code}`))
+}
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
@@ -146,8 +165,10 @@ async function createWindow() {
       sandbox: true,
     },
   })
-  win.webContents.on('did-start-loading', () => readyWindows.delete(win.webContents.id))
-  win.webContents.once('destroyed', () => readyWindows.delete(win.webContents.id))
+  const contentsId = win.webContents.id
+  win.webContents.on('did-start-loading', () => readyWindows.delete(contentsId))
+  win.webContents.once('destroyed', () => readyWindows.delete(contentsId))
+  if (process.env.MDR_TEST) win.once('closed', () => console.log(`[quit-check] window ${contentsId} closed`))
   win.once('ready-to-show', () => win.show())
   win.webContents.on('console-message', (_e, _level, message) => {
     console.log('[renderer]', message)
@@ -529,7 +550,11 @@ async function createWindow() {
         failed = true
         console.error('capture failed', err)
       } finally {
-        app.exit(failed ? 1 : 0)
+        // Exercise the same graceful shutdown used by menu Quit and updates.
+        // Set a failure code only after all windows have closed.
+        if (failed) app.once('will-quit', () => app.exit(1))
+        app.once('quit', (_event, code) => console.log(`[quit-check] normal shutdown ${code}`))
+        app.quit()
       }
     }, 8000)
   }

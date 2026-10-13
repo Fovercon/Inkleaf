@@ -19,16 +19,19 @@ try {
   const worker = path.join(temporary, 'worker.cjs')
   await writeFile(worker, String.raw`
 const {app,BrowserWindow}=require('electron')
+let resultCode=0
+app.on('will-quit',()=>{if(resultCode!==0)app.exit(resultCode)})
 app.setPath('userData',process.argv[3])
 app.whenReady().then(async()=>{
-  const timer=setTimeout(()=>{console.error('Platform UI tests timed out');app.exit(1)},20000)
+  const finish=(code)=>{resultCode=code;for(const win of BrowserWindow.getAllWindows())win.destroy();app.quit()}
+  const timer=setTimeout(()=>{console.error('Platform UI tests timed out');finish(1)},20000)
   const window=new BrowserWindow({width:1000,height:740,show:false,webPreferences:{contextIsolation:true,nodeIntegration:false,sandbox:true,backgroundThrottling:false}})
   await window.loadFile(process.argv[2])
   const result=await window.webContents.executeJavaScript('(async()=>{while(!window.platformUiTest)await new Promise(resolve=>setTimeout(resolve,20));return await window.platformUiTest})()')
   clearTimeout(timer)
   console.log(JSON.stringify(result))
-  app.exit(result?.passed?0:1)
-}).catch(error=>{console.error(error);app.exit(1)})
+  finish(result?.passed?0:1)
+}).catch(error=>{console.error(error);resultCode=1;for(const win of BrowserWindow.getAllWindows())win.destroy();app.quit()})
 `)
   const require = createRequire(import.meta.url)
   const environment = { ...process.env }

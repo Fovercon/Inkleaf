@@ -107,7 +107,7 @@ async function startWatch(root: string) {
     .on('addDir', emit('addDir')).on('unlinkDir', emit('unlinkDir'))
 }
 
-async function stopWatch() {
+export async function stopWatch() {
   if (watcher) {
     await watcher.close().catch(() => {})
     watcher = null
