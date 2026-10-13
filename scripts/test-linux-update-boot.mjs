@@ -34,10 +34,42 @@ let child
 let mayHaveLaunched = false
 let appStopped = false
 const processDiagnostics = new Map()
+const helperChildren = new Map()
 const digest = async filename => {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(filename)) hash.update(chunk)
   return hash.digest('hex')
+}
+async function processStartTime(proc) {
+  const contents = await readFile(path.join(proc, 'stat'), 'utf8')
+  // comm is parenthesized and may contain spaces or parentheses; field 22 is
+  // the start time, relative to the boot clock, after its final closing paren.
+  const fields = contents.slice(contents.lastIndexOf(')') + 2).trim().split(/\s+/)
+  if (!/^\d+$/.test(fields[19] || '')) throw new Error('Cannot bind a process without its kernel start time')
+  return fields[19]
+}
+async function recordHelperChildren() {
+  if (!child?.pid) return
+  let contents
+  try { contents = await readFile(`/proc/${child.pid}/task/${child.pid}/children`, 'utf8') }
+  catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) return; throw error }
+  for (const value of contents.trim().split(/\s+/).filter(Boolean)) {
+    if (!/^\d+$/.test(value)) throw new Error('Invalid kernel child PID')
+    const pid = Number(value), proc = `/proc/${value}`
+    try {
+      const status = await readFile(path.join(proc, 'status'), 'utf8')
+      const parentPid = Number(status.match(/^PPid:\s+(\d+)/m)?.[1])
+      if (parentPid !== child.pid) continue
+      const startTime = await processStartTime(proc)
+      if (helperChildren.get(pid)?.startTime === startTime) continue
+      helperChildren.set(pid, { parentPid, startTime })
+      console.log('[boot-child]', JSON.stringify({ pid, observedParentPid: parentPid, startTime }))
+    } catch (error) { if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error }
+  }
+}
+function reportProcess(diagnostic) {
+  const encoded = JSON.stringify(diagnostic)
+  if (processDiagnostics.get(diagnostic.pid) !== encoded) { console.log('[boot-process]', encoded); processDiagnostics.set(diagnostic.pid, encoded) }
 }
 async function ownedAppProcesses() {
   const found = []
@@ -49,11 +81,19 @@ async function ownedAppProcesses() {
       // dumpability. Use the actual process real/effective UIDs from status.
       const status = await readFile(path.join(proc, 'status'), 'utf8')
       const uids = status.match(/^Uid:\s+(\d+)\s+(\d+)/m)
-      if (!uids || Number(uids[1]) !== process.getuid() || Number(uids[2]) !== process.getuid()) continue
+      const binding = helperChildren.get(pid)
+      if (!uids || Number(uids[1]) !== process.getuid() || Number(uids[2]) !== process.getuid()) {
+        if (binding) reportProcess({ pid, realUid: uids ? Number(uids[1]) : null, effectiveUid: uids ? Number(uids[2]) : null,
+          observedParentPid: binding.parentPid, ownerMatches: false })
+        continue
+      }
       const argv = (await readFile(path.join(proc, 'cmdline'))).toString('utf8').split('\0').filter(Boolean)
       const flag = argv.indexOf('--inkleaf-update')
       const argumentNonceMatches = (flag >= 0 && argv[flag + 1] === nonce) || argv.includes(`--inkleaf-update=${nonce}`)
-      if (argv.some(arg => arg === '--type' || arg.startsWith('--type='))) continue
+      if (!binding && !argumentNonceMatches) continue
+      const parentPid = Number(status.match(/^PPid:\s+(\d+)/m)?.[1])
+      const startTimeMatches = binding ? await processStartTime(proc) === binding.startTime : false
+      const hasType = argv.some(arg => arg === '--type' || arg.startsWith('--type='))
       let executable
       try { executable = await readlink(path.join(proc, 'exe')) }
       catch (error) {
@@ -62,30 +102,34 @@ async function ownedAppProcesses() {
         executable = execFileSync('sudo', ['-n', 'readlink', path.join(proc, 'exe')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
       }
       if (executable === target && argv[0] === target && argumentNonceMatches) {
-        const diagnostic = JSON.stringify({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable, argumentNonceMatches })
-        if (processDiagnostics.get(pid) !== diagnostic) { console.log('[boot-process]', diagnostic); processDiagnostics.set(pid, diagnostic) }
+        reportProcess({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable, parentPid, argumentNonceMatches, hasType })
         found.push({ pid, kind: 'runtime' })
       } else if (/^\/tmp\/\.mount_Inklea[^/]+\/inkleaf$/.test(executable)) {
-        // Chromium may rewrite the main process title and erase its argv nonce.
-        // The private CI marker is inherited at exec, so /proc/environ retains
-        // an exact binding even when APPIMAGE was set later by the runtime.
+        // Record argv/environment gates for diagnostics only. Private helper
+        // parentage plus kernel start time survives rewritten process metadata.
         let environmentBuffer
+        let environmentReadable = true
         try { environmentBuffer = await readFile(path.join(proc, 'environ')) }
         catch (error) {
           if (error.code !== 'EACCES') throw error
           // Only this verified runner-owned mounted Inkleaf PID is inspected.
           // Environment bytes stay in memory and are never printed to logs.
-          environmentBuffer = execFileSync('sudo', ['-n', 'cat', path.join(proc, 'environ')], { stdio: ['ignore', 'pipe', 'ignore'] })
+          try { environmentBuffer = execFileSync('sudo', ['-n', 'cat', path.join(proc, 'environ')], { stdio: ['ignore', 'pipe', 'ignore'] }) }
+          catch { environmentBuffer = Buffer.alloc(0); environmentReadable = false }
         }
         const environment = environmentBuffer.toString('utf8').split('\0')
         const environmentNonceMatches = environment.includes(`INKLEAF_BOOT_TEST_NONCE=${nonce}`)
-        if (!environmentNonceMatches) continue
-        const diagnostic = JSON.stringify({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable,
-          argumentNonceMatches, environmentNonceMatches, hasAPPIMAGE: environment.some(value => value.startsWith('APPIMAGE=')), appImageMatches: environment.includes(`APPIMAGE=${target}`) })
-        if (processDiagnostics.get(pid) !== diagnostic) { console.log('[boot-process]', diagnostic); processDiagnostics.set(pid, diagnostic) }
+        reportProcess({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable, parentPid,
+          observedParentPid: binding?.parentPid, startTimeMatches, hasType,
+          argumentNonceMatches, environmentReadable, environmentNonceMatches, hasAPPIMAGE: environment.some(value => value.startsWith('APPIMAGE=')), appImageMatches: environment.includes(`APPIMAGE=${target}`) })
+        if (!binding || binding.parentPid !== child.pid || !startTimeMatches || hasType) continue
         assert.ok(!argv.includes('--no-sandbox') && !argv.includes('--disable-setuid-sandbox'))
-        // Actual UIDs + exact private nonce + mounted executable bind the main.
+        // This is the direct fork of our private packaged helper, with the same
+        // kernel start time and user IDs, executing the trusted mounted binary.
         found.push({ pid, kind: 'electron' })
+      } else if (binding) {
+        reportProcess({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable, parentPid,
+          observedParentPid: binding.parentPid, startTimeMatches, hasType, argumentNonceMatches })
       }
     } catch (error) {
       if (['ENOENT', 'ESRCH', 'EACCES'].includes(error.code)) continue
@@ -104,10 +148,10 @@ async function stopOwnedApp(requireRunning) {
   if (requireRunning) assert.equal(main.length, 1, 'Exactly one genuine updated Electron main process must be running')
   if (main.length > 1) throw new Error('Refusing to signal ambiguous application processes')
   if (main.length === 1) {
-    // Recheck owner, mounted executable and exact private nonce before signaling.
+    // Recheck helper parentage, start time, owner and mounted executable.
     const confirmed = (await ownedAppProcesses()).some(entry => entry.kind === 'electron' && entry.pid === main[0].pid)
     assert.ok(confirmed, 'The isolated main PID changed before graceful shutdown')
-    console.log(`[boot-ack-check] requesting normal exit of nonce-bound main PID ${main[0].pid}`)
+    console.log(`[boot-ack-check] requesting normal exit of helper-bound main PID ${main[0].pid}`)
     process.kill(main[0].pid, 'SIGTERM')
   }
   const deadline = Date.now() + 30000
@@ -146,14 +190,17 @@ try {
     // Use exit, not close: the new GUI deliberately outlives the helper.
     child.once('exit', (code, signal) => resolve({ code, signal }))
   })
+  await recordHelperChildren()
   const deadline = Date.now() + 120000
   let receipt
   while (Date.now() < deadline) {
+    await recordHelperChildren()
     try { receipt = JSON.parse(await readFile(result, 'utf8')) } catch (error) { if (error.code !== 'ENOENT') throw error }
     if (receipt?.state === 'installed') break
     if (receipt && ['error', 'rolled-back', 'needs-recovery'].includes(receipt.state)) throw new Error(`Native installation failed: ${JSON.stringify(receipt)}`)
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await new Promise(resolve => setTimeout(resolve, 25))
   }
+  await recordHelperChildren()
   assert.equal(receipt?.state, 'installed', 'A real packaged renderer must acknowledge its new installation')
   const exited = await completion
   assert.equal(exited.code, 0)
