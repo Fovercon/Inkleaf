@@ -1,3 +1,5 @@
+<img src="build/inkleaf-icon.png" width="96" alt="墨页 · Inkleaf 应用图标" />
+
 # 墨页 · Inkleaf
 
 让文字，安静生长。
@@ -12,7 +14,7 @@
 npm install       # 安装依赖（.npmrc 已配置国内镜像）
 npm start         # 开发模式启动
 npm run test:ui   # 使用独立配置和测试书库副本，回归验证并截图到 verify/
-npm run package   # 打包 dist/mac-arm64/Inkleaf.app
+npm run package   # 生成图标并打包 dist/mac-arm64/Inkleaf.app
 ```
 
 把 `Inkleaf.app` 拖入 `/Applications` 即可日常使用；Finder 中右键任意 `.md` 文件 → 打开方式 → 墨页 · Inkleaf。
@@ -27,6 +29,8 @@ npm run package   # 打包 dist/mac-arm64/Inkleaf.app
 ![欢迎页](docs/images/welcome.png)
 
 ![深色主题](docs/images/dark.png)
+
+应用图标将展开的书页与绿叶融为一体，采用暖白底色和轻微纸张折叠质感。源图稿保存在 `build/inkleaf-icon.png`；运行 `npm run icon` 可生成包含 16–1024 像素资源的 `build/icon.icns`。图稿由内置 ImageGen 生成，完整提示词见 [icon-prompt.txt](build/icon-prompt.txt)。
 
 ## 功能总览
 

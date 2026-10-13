@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "start": "node esbuild.mjs && electron .",
     "test:ui": "node esbuild.mjs && MDR_TEST=1 electron .",
-    "package": "node esbuild.mjs && electron-builder --mac dir --arm64",
+    "package": "node scripts/make-icon.mjs && node esbuild.mjs && electron-builder --mac dir --arm64",
     "icon": "node scripts/make-icon.mjs"
   },
   "build": {
