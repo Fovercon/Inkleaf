@@ -44,6 +44,8 @@ const readElf = async filename => {
   return data
 }
 await readElf(helper)
+console.log('Native update helper GNU libc symbol requirements:')
+execFileSync('readelf', ['--wide', '--version-info', helper], { stdio: 'inherit' })
 const image = path.join(output, `Inkleaf-${pkg.version}-linux-${arch}.AppImage`)
 const elf = await readElf(image)
 if (elf.subarray(8, 11).toString('hex') !== '414902') throw new Error('Expected a type 2 AppImage')

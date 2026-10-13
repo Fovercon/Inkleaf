@@ -22,7 +22,7 @@ if grep -R -- '--no-sandbox' .linux-appimage-smoke/squashfs-root/*.desktop; then
 fi
 test -x .linux-appimage-smoke/squashfs-root/resources/app/out/inkleaf-update-helper
 mkdir -p verify
-MDR_TEST=1 MDR_ROUND="linux-$arch-appimage" bash scripts/run-linux-ui.sh "verify/linux-$arch-appimage.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' .linux-appimage-smoke/squashfs-root/AppRun --disable-gpu
+APPDIR="$PWD/.linux-appimage-smoke/squashfs-root" MDR_TEST=1 MDR_ROUND="linux-$arch-appimage" bash scripts/run-linux-ui.sh "verify/linux-$arch-appimage.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' .linux-appimage-smoke/squashfs-root/AppRun --disable-gpu
 
 # Also exercise the real FUSE runtime, which supplies APPIMAGE for self-update.
 MDR_TEST=1 MDR_ROUND="linux-$arch-appimage-runtime" bash scripts/run-linux-ui.sh "verify/linux-$arch-appimage-runtime.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' "$image" --disable-gpu

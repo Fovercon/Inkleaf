@@ -296,6 +296,22 @@ static bool sha256_text(const char *hash) {
   return true;
 }
 
+static bool parent_pid(const char *text, pid_t *result) {
+  /* New glibc headers redirect strtol under _GNU_SOURCE to the GLIBC_2.38
+   * __isoc23_strtol symbol. Decimal PID parsing needs no locale or C23 support. */
+  if (!text[0]) return false;
+  unsigned int value = 0;
+  for (const unsigned char *p = (const unsigned char *)text; *p; ++p) {
+    if (*p < '0' || *p > '9') return false;
+    unsigned int digit = *p - '0';
+    if (value > ((unsigned int)INT_MAX - digit) / 10) return false;
+    value = value * 10 + digit;
+  }
+  if (value <= 1 || value == (unsigned int)getpid()) return false;
+  *result = (pid_t)value;
+  return true;
+}
+
 /* Files can replace another file with one POSIX atomic rename. Link the old
  * inode into our private directory first so replacement never loses the backup. */
 static bool atomic_install(void) {
@@ -379,9 +395,8 @@ int main(int argc, char **argv) {
   if (!stable_version(update_version) || !valid_nonce(argv[7]) || !sha256_text(argv[4])) {
     fprintf(stderr, "Invalid update version, nonce or SHA-256 digest\n"); return 1;
   }
-  char *end; errno = 0;
-  long parent = strtol(argv[5], &end, 10);
-  if (errno || !argv[5][0] || *end || parent <= 1 || parent > INT_MAX || parent == getpid()) {
+  pid_t parent;
+  if (!parent_pid(argv[5], &parent)) {
     fprintf(stderr, "Invalid parent process identifier\n"); return 1;
   }
   char target_parent[PATH_MAX], private_parent[PATH_MAX], private_name[NAME_MAX + 1];
@@ -420,7 +435,7 @@ int main(int argc, char **argv) {
       !validate_image(target_path, true) || !validate_image(staged_path, true) ||
       !verify_image(argv[3], argv[4]) || !verify_image(staged_path, argv[4])) goto error;
   if (!write_result("waiting", "Ready to install after Inkleaf exits")) { fail("Cannot persist the update transaction"); goto error; }
-  if (!wait_for_exit((pid_t)parent)) goto error;
+  if (!wait_for_exit(parent)) goto error;
   parent_exited = true;
   struct stat latest_target, latest_staged, latest_parent, latest_private;
   if (!real_file(target_path, &latest_target) || !real_file(staged_path, &latest_staged) ||
