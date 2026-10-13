@@ -25,7 +25,7 @@ npm run release:linux # 在原生 Linux x64/arm64 上构建 AppImage、deb 与 S
 
 ### Linux 安装
 
-0.3.0 提供 x64 与 arm64 的 AppImage 和 Debian 安装包。发布验证矩阵覆盖 Ubuntu 22.04 x64、Ubuntu 24.04 x64 与 Ubuntu 24.04 arm64；Debian 建议使用 12 或更新版本，尚未单独实测 Debian。旧版 glibc 系统不在本次兼容性承诺中。Ubuntu/Debian 桌面优先安装 `.deb`，会添加应用菜单入口与 Markdown 文件关联：
+从 [GitHub Releases](https://github.com/Fovercon/Inkleaf/releases/latest) 下载安装包。0.3.0 提供 x64 与 arm64 的 AppImage 和 Debian 安装包，已通过 Ubuntu 22.04 x64、Ubuntu 24.04 x64 与 Ubuntu 24.04 arm64 验证；Debian 建议使用 12 或更新版本，尚未单独实测 Debian。旧版 glibc 系统不在本次兼容性承诺中。Ubuntu/Debian 桌面优先安装 `.deb`，会添加应用菜单入口与 Markdown 文件关联：
 
 ```bash
 sudo apt install ./Inkleaf-0.3.0-linux-x64.deb

@@ -273,11 +273,12 @@ Markdown Reader 自动化打磨记录。每轮流程：调研业界标杆（Typo
 - 本机测试安装中的 0.2.0 更新器应用重定向补丁后，已通过软件内完整下载正式 0.2.2、校验、保存、退出、原子替换、重启及启动确认；安装回执为 `installed`，界面显示当前版本 0.2.2。
 - 升级前后当前文档 SHA-256 一致，书库路径、当前文件与最近记录一致；最早的 Markdown Reader 0.1.0 已从应用程序移入配置目录的 `app-backups/Markdown Reader-0.1.0.app`，保留恢复能力。
 
-## 2026-10-14 — Linux 适配与多平台发布（0.3.0，验证中）
+## 2026-10-14 — Linux 适配与多平台发布（0.3.0）
 
 - 增加原生 Linux x64/arm64 的 AppImage 和 Debian 安装包，保留 macOS arm64 更新 ZIP；统一附件命名并生成 SHA-256。
 - Linux 图标直接使用保存的 PNG；Debian 桌面入口、Markdown 文件关联、沙箱助手权限由安装脚本维护。
 - Linux 发布验证在 Ubuntu 22.04 x64 与 Ubuntu 24.04 arm64 runner 中执行：类型检查、安全与平台测试、Xvfb 原有 UI 回归、AppImage 提取及真实运行、Debian 包实际安装后的完整 UI 回归；Ubuntu 24.04 x64 兼容性任务复用同一份 x64 产物再验证，不生成另一套发布附件。
 - Chromium 沙箱保持启用；Ubuntu 24.04 CI 为开发与便携应用路径配置精确的 AppArmor 用户命名空间授权，不修改系统全局限制。桌面默认环境推荐 `.deb`。
 - 多平台构建任务仅上传已验证的附件；统一发布任务等待 macOS 和两种 Linux 架构全部成功后创建完整草稿，核对服务器摘要后才可发布。
-- 验证状态：本地检查与真实 Linux CI 正在进行；此条在最终结果确认后补充。
+- 验证通过：Ubuntu 22.04 x64、Ubuntu 24.04 arm64，以及复用同一 x64 安装包的 Ubuntu 24.04。Linux 类型检查、43 项更新安全测试、命令行路径测试、平台界面交互检查及源码/打包 AppImage/实际安装 deb 的完整功能回归全部通过；记录见 [Linux CI](https://github.com/Fovercon/Inkleaf/actions/runs/38451526111)。Debian 12 及更新版本提供兼容安装包，尚未单独实测 Debian。
+- 真实 AppImage 更新验证通过原生助手原子替换、旧版备份、正式 renderer 启动确认及正常退出。CI 通过助手父子关系与内核启动时间追踪进程，避免 Electron 改写进程参数后出现测试清理误判。
