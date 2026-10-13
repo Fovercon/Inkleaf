@@ -4,7 +4,7 @@
   max-width: 800px;
   margin: 0 auto;
   padding: 34px 44px 160px;
-  font-size: 16px;
+  font-size: calc(16px * var(--font-scale, 1));
   line-height: 1.8;
   color: var(--text);
   word-wrap: break-word;

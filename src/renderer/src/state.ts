@@ -1,8 +1,10 @@
-export type ThemePref = 'auto' | 'light' | 'dark'
+export type ThemePref = 'auto' | 'light' | 'sepia' | 'green' | 'dark'
 export type PaneKey = 'sidebar' | 'editor' | 'preview' | 'outline'
 
 export interface UiState {
   theme: ThemePref
+  /** preview/editor base font multiplier */
+  fontScale: number
   collapsed: Record<PaneKey, boolean>
   widths: { sidebar: number; editor: number; outline: number }
   expandedDirs: string[]
@@ -15,6 +17,7 @@ const KEY = 'mdr.ui.v1'
 
 const DEFAULTS: UiState = {
   theme: 'auto',
+  fontScale: 1,
   collapsed: { sidebar: false, editor: false, preview: false, outline: false },
   widths: { sidebar: 240, editor: 460, outline: 220 },
   expandedDirs: [],
@@ -37,6 +40,7 @@ function load(): UiState {
       recent: p.recent ?? [],
       scrollByPath: p.scrollByPath ?? {},
       sidebarTab: p.sidebarTab === 'recent' ? 'recent' : 'files',
+      fontScale: typeof p.fontScale === 'number' ? Math.min(1.6, Math.max(0.8, p.fontScale)) : 1,
     }
   } catch {
     return structuredClone(DEFAULTS)

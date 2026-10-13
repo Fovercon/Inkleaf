@@ -2,7 +2,7 @@ import '../styles/app.css'
 import '../styles/preview.css'
 import 'katex/dist/katex.min.css'
 
-import { getState, saveState, runtime, PaneKey } from './state'
+import { getState, saveState, runtime, PaneKey, ThemePref } from './state'
 import { applyTheme, setTheme, cycleTheme, onThemeChange, currentTheme } from './theme'
 import { FileTree } from './fileTree'
 import { EditorPane } from './editor'
@@ -300,6 +300,17 @@ function jumpToLine(line: number) {
   editor.scrollToLine(line)
 }
 
+function applyFontScale(scale: number) {
+  const s = getState()
+  s.fontScale = Math.min(1.6, Math.max(0.8, Math.round(scale * 100) / 100))
+  saveState()
+  document.documentElement.style.setProperty('--font-scale', String(s.fontScale))
+}
+
+function zoomFont(delta: number) {
+  applyFontScale(getState().fontScale + delta)
+}
+
 function paletteOpts() {
   return {
     listFiles: () => window.mdr.listFiles(),
@@ -387,11 +398,26 @@ function setupActions() {
       case 'theme-light':
         setTheme('light')
         break
+      case 'theme-sepia':
+        setTheme('sepia')
+        break
+      case 'theme-green':
+        setTheme('green')
+        break
       case 'theme-dark':
         setTheme('dark')
         break
       case 'theme-auto':
         setTheme('auto')
+        break
+      case 'zoom-in':
+        zoomFont(0.1)
+        break
+      case 'zoom-out':
+        zoomFont(-0.1)
+        break
+      case 'zoom-reset':
+        applyFontScale(1)
         break
       case 'fmt-bold':
         editor.toggleBold()
@@ -514,6 +540,7 @@ function setupDragDrop() {
 
 async function boot() {
   applyTheme()
+  applyFontScale(getState().fontScale)
   editor.mount(editorHost, currentTheme() === 'dark')
   onThemeChange((t) => editor.setDarkTheme(t === 'dark'))
 
@@ -535,6 +562,14 @@ async function boot() {
   // test hook: export to a fixed path, bypassing the save dialog
   document.addEventListener('mdr-test-export', (e) => {
     void exportTo((e as CustomEvent).detail?.kind === 'html' ? 'html' : 'pdf', (e as CustomEvent).detail?.path ?? '')
+  })
+  // test hooks: theme & font scale
+  document.addEventListener('mdr-test-theme', (e) => {
+    const t = (e as CustomEvent).detail?.theme as ThemePref | undefined
+    setTheme(t ?? 'auto')
+  })
+  document.addEventListener('mdr-test-zoom', (e) => {
+    applyFontScale(Number((e as CustomEvent).detail?.scale ?? 1) || 1)
   })
 
   setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)

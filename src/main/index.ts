@@ -278,6 +278,36 @@ async function createWindow() {
           htmlText.includes('data:font/') ||
           htmlText.includes('data:image/')
         console.log(`[export-html] ${htmlOk ? 'OK' : 'FAIL'} size=${fs.existsSync(htmlPath) ? fs.statSync(htmlPath).size : 0} embedded=${htmlEmbedded}`)
+        // theme & font scale verification
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'sepia' })}}))`,
+        )
+        await new Promise((r) => setTimeout(r, 900))
+        const sepiaShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-sepia.png`), sepiaShot.toPNG())
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'dark' })}}))`,
+        )
+        await new Promise((r) => setTimeout(r, 1100))
+        const darkShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-dark.png`), darkShot.toPNG())
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'light' })}}))`,
+        )
+        await new Promise((r) => setTimeout(r, 900))
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-zoom', {detail: ${JSON.stringify({ scale: 1.3 })}}))`,
+        )
+        await new Promise((r) => setTimeout(r, 400))
+        const zoomShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-zoom.png`), zoomShot.toPNG())
+        // restore defaults for the next run
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'auto' })}}))`,
+        )
+        await win.webContents.executeJavaScript(
+          `document.dispatchEvent(new CustomEvent('mdr-test-zoom', {detail: ${JSON.stringify({ scale: 1 })}}))`,
+        )
         console.log(`verify screenshots written (round ${round})`)
         console.log('verify screenshot written')
       } catch (err) {
@@ -336,8 +366,14 @@ function buildMenu() {
         { label: '切换大纲', accelerator: 'CmdOrCtrl+3', click: () => send('toggle-outline') },
         { type: 'separator' },
         { label: '浅色主题', click: () => send('theme-light') },
+        { label: '羊皮纸', click: () => send('theme-sepia') },
+        { label: '护眼绿', click: () => send('theme-green') },
         { label: '深色主题', click: () => send('theme-dark') },
         { label: '跟随系统', click: () => send('theme-auto') },
+        { type: 'separator' },
+        { label: '放大字号', accelerator: 'CmdOrCtrl+=', click: () => send('zoom-in') },
+        { label: '缩小字号', accelerator: 'CmdOrCtrl+-', click: () => send('zoom-out') },
+        { label: '重置字号', accelerator: 'CmdOrCtrl+0', click: () => send('zoom-reset') },
         { type: 'separator' },
         { role: 'reload', label: '重新加载' },
         { role: 'toggleDevTools', label: '开发者工具' },

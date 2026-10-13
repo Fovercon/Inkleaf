@@ -1,6 +1,6 @@
 import { getState, saveState, ThemePref } from './state'
 
-export type ResolvedTheme = 'light' | 'dark'
+export type ResolvedTheme = 'light' | 'sepia' | 'green' | 'dark'
 
 const mq = window.matchMedia('(prefers-color-scheme: dark)')
 const listeners = new Set<(t: ResolvedTheme) => void>()
@@ -17,16 +17,21 @@ export function currentTheme(): ResolvedTheme {
   return resolved
 }
 
+export function isDark(): boolean {
+  return resolved === 'dark'
+}
+
 export function setTheme(t: ThemePref) {
   getState().theme = t
   saveState()
   applyTheme()
 }
 
+const CYCLE: ThemePref[] = ['auto', 'light', 'sepia', 'green', 'dark']
+
 export function cycleTheme() {
-  const order: ThemePref[] = ['auto', 'light', 'dark']
   const cur = getState().theme
-  setTheme(order[(order.indexOf(cur) + 1) % order.length])
+  setTheme(CYCLE[(CYCLE.indexOf(cur) + 1) % CYCLE.length])
 }
 
 export function onThemeChange(cb: (t: ResolvedTheme) => void): () => void {
