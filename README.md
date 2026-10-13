@@ -24,18 +24,18 @@ npm run release:build # 构建 app，以及供软件内更新使用的 ZIP 和 S
 
 从 0.2.0 开始，已打包的 macOS 应用会在启动后检查 [GitHub Releases](https://github.com/Fovercon/Inkleaf/releases) 中的正式新版本，也可以通过应用菜单的「检查更新…」手动检查。发现更新后，可在软件里下载；下载完成并确认重启后，应用会替换自身并重新打开。更新包会核对 GitHub 提供的 SHA-256 摘要、应用标识、版本与 CPU 架构。书库、Markdown 文件与原有设置继续保留。
 
-0.1.0 没有更新器，需要先手动安装一次 0.2.0。开发模式不执行更新；草稿和预发布版本不会进入更新渠道。目前提供 Apple Silicon（arm64）更新包，应用目录需要当前用户拥有写入权限。
+0.1.0 没有更新器，需要先手动安装一次 0.2.2 或更新版本。0.2.2 修复了 0.2.0/0.2.1 在 GitHub 下载重定向时可能失败的问题；如果旧版无法完成下载，也可以直接安装新版。开发模式不执行更新；草稿和预发布版本不会进入更新渠道。目前提供 Apple Silicon（arm64）更新包，应用目录需要当前用户拥有写入权限。
 
 这是为已经在这台 Mac 上允许运行的 Inkleaf 提供的个人自助更新方式。当前构建没有 Apple Developer ID 签名与公证，更新器不会关闭 Gatekeeper，也不会移除下载文件的隔离属性；如果 macOS 拦截新版，按系统的「隐私与安全性」提示操作。面向公开分发时，应为应用添加 [Developer ID 签名与 Apple 公证](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)。
 
 ## 发布新版本
 
-将 `package.json` 和 `package-lock.json` 的项目版本一起升级（例如 0.2.1），提交修改后推送对应的 `v0.2.1` 标签。标签版本必须与 `package.json` 完全相同，发布渠道仅接受 `x.y.z` 正式版本。
+将 `package.json` 和 `package-lock.json` 的项目版本一起升级（例如 0.2.3），提交修改后推送对应的 `v0.2.3` 标签。标签版本必须与 `package.json` 完全相同，发布渠道仅接受 `x.y.z` 正式版本。
 
-仓库的「Build macOS release」工作流会在 macOS 上安装依赖、检查 TypeScript 并构建以下附件：
+仓库的「Build macOS release」工作流会在 macOS 上安装依赖、检查 TypeScript、运行更新安全回归并构建以下附件：
 
-- `Inkleaf-0.2.1-mac-arm64.zip`：ZIP 根目录是 `Inkleaf.app`，保留应用包的符号链接。
-- `Inkleaf-0.2.1-mac-arm64.zip.sha256`：供手动下载时核对的 SHA-256 校验文件。
+- `Inkleaf-0.2.3-mac-arm64.zip`：ZIP 根目录是 `Inkleaf.app`，保留应用包的符号链接。
+- `Inkleaf-0.2.3-mac-arm64.zip.sha256`：供手动下载时核对的 SHA-256 校验文件。
 
 推送标签默认生成 GitHub Release **草稿**。检查附件与版本说明后，在 GitHub 点击「Publish release」即可让软件发现更新；也可以手动运行工作流，填写现有标签并勾选 `publish`。重跑工作流可以补齐或重建同一草稿的附件，已经发布的版本会拒绝覆盖，修复应发布新的版本号。客户端只读取公开的正式 Release，无需登录 GitHub，应用中不包含发布令牌。
 
@@ -43,11 +43,12 @@ npm run release:build # 构建 app，以及供软件内更新使用的 ZIP 和 S
 
 ```bash
 npm run typecheck
+npm run test:updates
 npm run release:build
 # 可选：在 Intel Mac 或跨架构构建时显式指定
 npm run release:build -- --arch x64
 cd dist
-shasum -a 256 -c Inkleaf-0.2.1-mac-arm64.zip.sha256
+shasum -a 256 -c Inkleaf-0.2.3-mac-arm64.zip.sha256
 ```
 
 本机构建命令只生成文件，不上传或发布。发布时将 ZIP 和校验文件一起上传到同版本 Release；客户端使用 GitHub API 返回的资产摘要核验下载，而非把旁边的校验文本文件作为独立信任来源。

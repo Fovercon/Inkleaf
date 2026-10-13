@@ -5,6 +5,7 @@ import { constants, createReadStream } from 'node:fs'
 import { createHash, randomBytes } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
+import { Readable } from 'node:stream'
 import type { UpdateState } from '../shared/updates'
 import { RELEASE_API, selectRelease, validateDownloadHost, type UpdateCandidate } from './updatePolicy'
 import { validateArchive } from './updateArchive'
@@ -29,19 +30,51 @@ function reason(error: unknown) {
   return '操作未完成，请稍后重试'
 }
 async function request(url: string, signal: AbortSignal, api = false): Promise<Response> {
-  for (let hop = 0; hop < 5; hop++) {
-    validateDownloadHost(url, api)
-    const res = await net.fetch(url, { signal, redirect: 'manual', headers: {
-      'User-Agent': `Inkleaf/${app.getVersion()}`,
-      ...(api ? { Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } : {}) } })
-    if (![301, 302, 303, 307, 308].includes(res.status)) return res
-    const location = res.headers.get('location')
-    await res.body?.cancel()
-    if (!location) throw new Error('下载地址重定向无效')
-    url = new URL(location, url).href
-  }
-  throw new Error('更新服务器重定向次数过多')
+  validateDownloadHost(url, api)
+  // Electron 33's net.fetch rejects manual redirects before returning a 302.
+  // ClientRequest lets us validate each redirect before explicitly following it.
+  return new Promise((resolve, reject) => {
+    const req = net.request({ url, method: 'GET', redirect: 'manual', credentials: 'omit' })
+    let hops = 0, incoming: Readable | null = null
+    const abort = () => { incoming?.destroy(new Error('下载已取消')); req.abort(); reject(new Error('请求已取消')) }
+    if (signal.aborted) { abort(); return }
+    signal.addEventListener('abort', abort, { once: true })
+    const cleanup = () => signal.removeEventListener('abort', abort)
+    req.setHeader('User-Agent', `Inkleaf/${app.getVersion()}`)
+    req.setHeader('Cache-Control', 'no-cache')
+    if (api) { req.setHeader('Accept', 'application/vnd.github+json'); req.setHeader('X-GitHub-Api-Version', '2022-11-28') }
+    req.on('redirect', (_status, method, next) => {
+      try {
+        validateDownloadHost(next, api)
+        if (++hops > 5 || method !== 'GET') throw new Error('更新服务器重定向无效')
+        req.followRedirect()
+      } catch (error) { req.abort(); cleanup(); reject(error) }
+    })
+    req.on('error', error => { cleanup(); reject(error) })
+    req.on('abort', () => { cleanup(); reject(new Error('请求已取消')) })
+    req.on('response', response => {
+      try {
+        // Electron's runtime response is a Node Readable; its declarations only
+        // expose the events. Check that contract before adapting its body.
+        if (!(response instanceof Readable)) throw new Error('更新服务器响应流无效')
+        incoming = response
+        const headers = new Headers()
+        for (const [name, values] of Object.entries(response.headers)) {
+          for (const value of Array.isArray(values) ? values : [values]) headers.append(name, value)
+        }
+        incoming.once('end', cleanup); incoming.once('close', cleanup)
+        const noBody = [204, 205, 304].includes(response.statusCode)
+        const body = noBody ? null : Readable.toWeb(incoming) as ReadableStream<Uint8Array>
+        resolve(new Response(body, { status: response.statusCode, headers }))
+        if (noBody) incoming.resume()
+      } catch (error) {
+        req.abort(); cleanup(); reject(error)
+      }
+    })
+    req.end()
+  })
 }
+
 export async function checkForUpdates(): Promise<UpdateState> {
   if (downloadAbort || installBusy) return state
   if (['unsupported', 'checking', 'downloading', 'ready', 'installing'].includes(state.status)) return state
