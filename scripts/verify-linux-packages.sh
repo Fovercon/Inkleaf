@@ -27,10 +27,6 @@ APPDIR="$PWD/.linux-appimage-smoke/squashfs-root" MDR_TEST=1 MDR_ROUND="linux-$a
 # Also exercise the real FUSE runtime, which supplies APPIMAGE for self-update.
 MDR_TEST=1 MDR_ROUND="linux-$arch-appimage-runtime" bash scripts/run-linux-ui.sh "verify/linux-$arch-appimage-runtime.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' "$image" --disable-gpu
 
-# No MDR_TEST or fake updater API: a same-version real image tests native install
-# and normal packaged UI readiness acknowledgement without altering the release.
-INKLEAF_UI_SUCCESS_MARKER='[boot-ack-check] installed' bash scripts/run-linux-ui.sh "verify/linux-$arch-boot-ack.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' node scripts/test-linux-update-boot.mjs "$image" "$PWD/.linux-appimage-smoke/squashfs-root/resources/app/out/inkleaf-update-helper"
-
 # Exercise the installed deb as a normal user; only installation uses sudo.
 sudo apt-get install -y "$deb"
 test "$(stat -c '%U:%G:%a' /opt/Inkleaf/chrome-sandbox)" = 'root:root:4755'
@@ -44,3 +40,7 @@ grep -F 'pattern="*.md"' "$mime"
 grep -F 'pattern="*.markdown"' "$mime"
 if grep -- '--no-sandbox' "$desktop"; then echo 'deb launcher disables sandbox' >&2; exit 1; fi
 MDR_TEST=1 MDR_ROUND="linux-$arch-deb" bash scripts/run-linux-ui.sh "verify/linux-$arch-deb.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' /usr/bin/inkleaf --disable-gpu
+
+# No MDR_TEST or fake updater API: a same-version real image tests native install
+# and normal packaged UI readiness acknowledgement without altering the release.
+INKLEAF_UI_SUCCESS_MARKER='[boot-ack-check] installed' bash scripts/run-linux-ui.sh "verify/linux-$arch-boot-ack.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' node scripts/test-linux-update-boot.mjs "$image" "$PWD/.linux-appimage-smoke/squashfs-root/resources/app/out/inkleaf-update-helper"

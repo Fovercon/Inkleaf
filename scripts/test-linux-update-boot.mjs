@@ -52,7 +52,8 @@ async function ownedAppProcesses() {
       if (!uids || Number(uids[1]) !== process.getuid() || Number(uids[2]) !== process.getuid()) continue
       const argv = (await readFile(path.join(proc, 'cmdline'))).toString('utf8').split('\0').filter(Boolean)
       const flag = argv.indexOf('--inkleaf-update')
-      if (!((flag >= 0 && argv[flag + 1] === nonce) || argv.includes(`--inkleaf-update=${nonce}`)) || argv.some(arg => arg === '--type' || arg.startsWith('--type='))) continue
+      const argumentNonceMatches = (flag >= 0 && argv[flag + 1] === nonce) || argv.includes(`--inkleaf-update=${nonce}`)
+      if (argv.some(arg => arg === '--type' || arg.startsWith('--type='))) continue
       let executable
       try { executable = await readlink(path.join(proc, 'exe')) }
       catch (error) {
@@ -60,18 +61,30 @@ async function ownedAppProcesses() {
         // CI-only read access, no changes to sandbox or process permissions.
         executable = execFileSync('sudo', ['-n', 'readlink', path.join(proc, 'exe')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
       }
-      let environment = []
-      let environmentReadable = true
-      try { environment = (await readFile(path.join(proc, 'environ'))).toString('utf8').split('\0') }
-      catch (error) { if (error.code === 'EACCES') environmentReadable = false; else throw error }
-      const diagnostic = JSON.stringify({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable,
-        environmentReadable, hasAPPIMAGE: environment.some(value => value.startsWith('APPIMAGE=')), appImageMatches: environment.includes(`APPIMAGE=${target}`) })
-      if (processDiagnostics.get(pid) !== diagnostic) { console.log('[boot-process]', diagnostic); processDiagnostics.set(pid, diagnostic) }
-      if (executable === target && argv[0] === target) found.push({ pid, kind: 'runtime' })
-      else if (path.basename(executable) === 'inkleaf' && executable.startsWith('/tmp/.mount_Inklea')) {
+      if (executable === target && argv[0] === target && argumentNonceMatches) {
+        const diagnostic = JSON.stringify({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable, argumentNonceMatches })
+        if (processDiagnostics.get(pid) !== diagnostic) { console.log('[boot-process]', diagnostic); processDiagnostics.set(pid, diagnostic) }
+        found.push({ pid, kind: 'runtime' })
+      } else if (/^\/tmp\/\.mount_Inklea[^/]+\/inkleaf$/.test(executable)) {
+        // Chromium may rewrite the main process title and erase its argv nonce.
+        // The private CI marker is inherited at exec, so /proc/environ retains
+        // an exact binding even when APPIMAGE was set later by the runtime.
+        let environmentBuffer
+        try { environmentBuffer = await readFile(path.join(proc, 'environ')) }
+        catch (error) {
+          if (error.code !== 'EACCES') throw error
+          // Only this verified runner-owned mounted Inkleaf PID is inspected.
+          // Environment bytes stay in memory and are never printed to logs.
+          environmentBuffer = execFileSync('sudo', ['-n', 'cat', path.join(proc, 'environ')], { stdio: ['ignore', 'pipe', 'ignore'] })
+        }
+        const environment = environmentBuffer.toString('utf8').split('\0')
+        const environmentNonceMatches = environment.includes(`INKLEAF_BOOT_TEST_NONCE=${nonce}`)
+        if (!environmentNonceMatches) continue
+        const diagnostic = JSON.stringify({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable,
+          argumentNonceMatches, environmentNonceMatches, hasAPPIMAGE: environment.some(value => value.startsWith('APPIMAGE=')), appImageMatches: environment.includes(`APPIMAGE=${target}`) })
+        if (processDiagnostics.get(pid) !== diagnostic) { console.log('[boot-process]', diagnostic); processDiagnostics.set(pid, diagnostic) }
         assert.ok(!argv.includes('--no-sandbox') && !argv.includes('--disable-setuid-sandbox'))
-        // uid + exact nonce + trusted mounted executable are the authority.
-        // /proc/environ is diagnostic only: dumpability/setenv can hide it.
+        // Actual UIDs + exact private nonce + mounted executable bind the main.
         found.push({ pid, kind: 'electron' })
       }
     } catch (error) {
@@ -91,7 +104,7 @@ async function stopOwnedApp(requireRunning) {
   if (requireRunning) assert.equal(main.length, 1, 'Exactly one genuine updated Electron main process must be running')
   if (main.length > 1) throw new Error('Refusing to signal ambiguous application processes')
   if (main.length === 1) {
-    // Recheck owner, mounted executable and exact nonce before signaling.
+    // Recheck owner, mounted executable and exact private nonce before signaling.
     const confirmed = (await ownedAppProcesses()).some(entry => entry.kind === 'electron' && entry.pid === main[0].pid)
     assert.ok(confirmed, 'The isolated main PID changed before graceful shutdown')
     console.log(`[boot-ack-check] requesting normal exit of nonce-bound main PID ${main[0].pid}`)
@@ -122,7 +135,7 @@ try {
   // Refuse to overwrite even an unexpected CI transaction; no real profile is used.
   await writeFile(ticket, JSON.stringify({ nonce, version: pkg.version, target, job, ack, result }), { flag: 'wx', mode: 0o600 })
   wroteTicket = true
-  const environment = { ...process.env }
+  const environment = { ...process.env, INKLEAF_BOOT_TEST_NONCE: nonce }
   delete environment.MDR_TEST
   delete environment.MDR_ROUND
   delete environment.ELECTRON_RUN_AS_NODE
