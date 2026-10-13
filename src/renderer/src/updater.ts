@@ -208,8 +208,9 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
     const actionable = status === 'available' || status === 'ready'
     if (trigger) {
       trigger.dataset.updateAvailable = String(actionable)
-      trigger.setAttribute('aria-label', actionable ? '新版本已准备好，查看更新' : '检查更新')
-      trigger.title = actionable ? '新版本已准备好，查看更新' : '检查更新'
+      const label = actionable ? manual ? '有新版安装包，查看更新' : '新版本已准备好，查看更新' : '检查更新'
+      trigger.setAttribute('aria-label', label)
+      trigger.title = label
     }
     notice.hidden = !overlay.hidden || !actionable || dismissedNotices.has(noticeKey())
     noticeText.textContent = manual ? `Inkleaf ${version} 新版安装包已发布` : status === 'ready' ? `Inkleaf ${version} 已准备就绪` : `Inkleaf ${version} 可以更新了`

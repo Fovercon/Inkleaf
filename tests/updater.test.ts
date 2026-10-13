@@ -155,6 +155,11 @@ test('AppImage paths reject symlinks, hardlinks, non-executable files and foreig
   await chmod(filename, 0o600)
   await assert.rejects(appImageTarget(filename, 'x64'))
   await chmod(filename, 0o700)
+  const getuid = process.getuid
+  if (getuid) {
+    process.getuid = () => getuid() + 1
+    try { await assert.rejects(appImageTarget(filename, 'x64')) } finally { process.getuid = getuid }
+  }
   await assert.rejects(appImageTarget(path.join(directory, 'Other.AppImage'), 'x64'))
   await assert.rejects(appImageTarget(undefined, 'x64'))
   await assert.rejects(appImageTarget('Inkleaf.AppImage', 'x64'))
@@ -168,14 +173,17 @@ test('Linux native helper replaces atomically, keeps backup, verifies both paylo
   await writeFile(fixture, `#include <stdio.h>\n#include <stdlib.h>\nint main(int argc,char **argv) { if(argc==3) { FILE *f=fopen(getenv("INKLEAF_FIXTURE_ACK"),"w"); if(!f)return 1; fputs(argv[2],f); fclose(f); } return 0; }\n`)
   const original = path.join(directory, 'runtime')
   execFileSync('gcc', [fixture, '-o', original])
-  const executable = await readFile(original)
+  const runtime = await readFile(original)
+  const executable = Buffer.concat([runtime, Buffer.from('\nnew release')])
   executable.set([0x41, 0x49, 0x02], 8)
   await writeFile(original, executable, { mode: 0o700 })
+  const baseline = Buffer.concat([runtime, Buffer.from('\nprevious release')])
+  baseline.set([0x41, 0x49, 0x02], 8)
   const nonce = 'a1'.repeat(24)
   const { createHash } = await import('node:crypto')
   const digest = createHash('sha256').update(executable).digest('hex')
   const target = path.join(directory, 'Inkleaf.AppImage')
-  await copyFile(original, target); await chmod(target, 0o700)
+  await writeFile(target, baseline, { mode: 0o700 })
   const job = path.join(directory, '.inkleaf-update-success')
   await mkdir(job, { mode: 0o700 })
   const staged = path.join(job, 'Inkleaf.AppImage'), source = path.join(job, 'download.AppImage')
@@ -187,7 +195,7 @@ test('Linux native helper replaces atomically, keeps backup, verifies both paylo
   const receipt = JSON.parse(await readFile(result, 'utf8'))
   assert.equal(receipt.state, 'installed')
   assert.equal(receipt.version, '0.3.0')
-  assert.deepEqual(await readFile(receipt.backupPath), executable)
+  assert.deepEqual(await readFile(receipt.backupPath), baseline)
   assert.deepEqual(await readFile(target), executable)
   // A valid download cannot authorize a modified staged executable.
   const badJob = path.join(directory, '.inkleaf-update-tampered')
@@ -199,6 +207,21 @@ test('Linux native helper replaces atomically, keeps backup, verifies both paylo
   const badResult = path.join(badJob, 'result.json')
   assert.throws(() => execFileSync(helper, [target, badStage, source, digest, '2147483647', path.join(badJob, 'boot-ack'), nonce, '0.3.0', badResult]))
   assert.equal(JSON.parse(await readFile(badResult, 'utf8')).state, 'error')
+  assert.deepEqual(await readFile(target), executable)
+  // The original download is independently verified even with a valid stage.
+  await copyFile(original, badStage)
+  const badSource = path.join(badJob, 'download.AppImage')
+  await writeFile(badSource, altered)
+  assert.throws(() => execFileSync(helper, [target, badStage, badSource, digest, '2147483647', path.join(badJob, 'boot-ack'), nonce, '0.3.0', badResult]))
+  assert.equal(JSON.parse(await readFile(badResult, 'utf8')).state, 'error')
+  // Neither a symlink target nor another hardlink to that inode may be replaced.
+  const targetAlias = path.join(directory, 'Inkleaf-alias.AppImage')
+  await symlink(target, targetAlias)
+  assert.throws(() => execFileSync(helper, [targetAlias, badStage, source, digest, '2147483647', path.join(badJob, 'boot-ack'), nonce, '0.3.0', badResult]))
+  await rm(targetAlias)
+  await link(target, targetAlias)
+  assert.throws(() => execFileSync(helper, [target, badStage, source, digest, '2147483647', path.join(badJob, 'boot-ack'), nonce, '0.3.0', badResult]))
+  await rm(targetAlias)
   assert.deepEqual(await readFile(target), executable)
 })
 

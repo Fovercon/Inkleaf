@@ -4,7 +4,7 @@
 
 让文字，安静生长。
 
-面向 macOS 的个人 Markdown 阅读与编辑器。暖白纸面、墨色文字与叶绿色点缀，让阅读与写作回归舒适、专注。
+面向 macOS 与 Linux 的个人 Markdown 阅读与编辑器。暖白纸面、墨色文字与叶绿色点缀，让阅读与写作回归舒适、专注。
 
 ![墨页 · Inkleaf 阅读与编辑界面](docs/images/workspace.png)
 
@@ -16,42 +16,71 @@ npm start         # 开发模式启动
 npm run test:ui   # 使用独立配置和测试书库副本，回归验证并截图到 verify/
 npm run package   # 生成图标并打包 dist/mac-arm64/Inkleaf.app
 npm run release:build # 构建 app，以及供软件内更新使用的 ZIP 和 SHA-256 文件
+npm run release:linux # 在原生 Linux x64/arm64 上构建 AppImage、deb 与 SHA-256 文件
 ```
 
 把 `Inkleaf.app` 拖入 `/Applications` 即可日常使用；Finder 中右键任意 `.md` 文件 → 打开方式 → 墨页 · Inkleaf。
 
+### Linux 安装
+
+0.3.0 提供 x64 与 arm64 的 AppImage 和 Debian 安装包。Ubuntu/Debian 桌面优先安装 `.deb`，会添加应用菜单入口与 Markdown 文件关联：
+
+```bash
+sudo apt install ./Inkleaf-0.3.0-linux-x64.deb
+inkleaf /path/to/document.md
+```
+
+便携使用可以下载 AppImage，赋予执行权限后直接启动；arm64 机器把文件名中的 `x64` 换成 `arm64`：
+
+```bash
+chmod +x Inkleaf-0.3.0-linux-x64.AppImage
+./Inkleaf-0.3.0-linux-x64.AppImage
+```
+
+AppImage 的 FUSE 运行方式需要 FUSE 2 兼容库（Ubuntu 22.04 的 `libfuse2`，Ubuntu 24.04 的 `libfuse2t64`）。Ubuntu 24.04 的 AppArmor 可能限制便携应用创建用户命名空间；遇到沙箱启动错误时，请优先安装 `.deb`。正常安装的 `.deb` 会为 root 所有的 Chromium 沙箱助手设置正确权限，保留浏览器沙箱。CI 对便携版使用仅针对 Inkleaf 路径的测试配置，不能据此承诺任意 Ubuntu 24.04 桌面默认配置都能直接运行 AppImage。
+
+Linux 使用 Ctrl 快捷键与系统窗口边框，支持从命令行、文件管理器或「打开方式」打开 Markdown 文件。原有阅读、编辑、搜索、主题、图片和 PDF/HTML 导出功能保持同一套界面。
+
 ## 软件内更新
 
-从 0.2.0 开始，已打包的 macOS 应用会在启动后检查 [GitHub Releases](https://github.com/Fovercon/Inkleaf/releases) 中的正式新版本，也可以通过应用菜单的「检查更新…」手动检查。发现更新后，可在软件里下载；下载完成并确认重启后，应用会替换自身并重新打开。更新包会核对 GitHub 提供的 SHA-256 摘要、应用标识、版本与 CPU 架构。书库、Markdown 文件与原有设置继续保留。
+已打包的应用会在启动后检查 [GitHub Releases](https://github.com/Fovercon/Inkleaf/releases) 中的正式新版本，也可以通过菜单或工具栏的「检查更新…」手动检查。macOS 应用与 Linux AppImage 可以在软件里下载；下载完成并确认重启后，应用会替换自身并重新打开。更新包会核对 GitHub 提供的 SHA-256 摘要、应用标识、版本与 CPU 架构。书库、Markdown 文件与原有设置继续保留。
 
-0.1.0 没有更新器，需要先手动安装一次 0.2.2 或更新版本。0.2.2 修复了 0.2.0/0.2.1 在 GitHub 下载重定向时可能失败的问题；如果旧版无法完成下载，也可以直接安装新版。开发模式不执行更新；草稿和预发布版本不会进入更新渠道。目前提供 Apple Silicon（arm64）更新包，应用目录需要当前用户拥有写入权限。
+Linux `.deb` 由系统包管理器安装，软件只检查新版本并提供下载入口，随后使用 `apt install ./新版本.deb` 更新；不会让应用自行替换系统目录。AppImage 的软件内更新要求文件和所在目录可由当前用户写入。
+
+macOS 0.1.0 没有更新器，需要先手动安装一次 0.2.2 或更新版本。0.2.2 修复了 0.2.0/0.2.1 在 GitHub 下载重定向时可能失败的问题；如果旧版无法完成下载，也可以直接安装新版。开发模式不执行更新；草稿和预发布版本不会进入更新渠道。macOS 目前提供 Apple Silicon（arm64）更新包，应用目录需要当前用户拥有写入权限。
 
 这是为已经在这台 Mac 上允许运行的 Inkleaf 提供的个人自助更新方式。当前构建没有 Apple Developer ID 签名与公证，更新器不会关闭 Gatekeeper，也不会移除下载文件的隔离属性；如果 macOS 拦截新版，按系统的「隐私与安全性」提示操作。面向公开分发时，应为应用添加 [Developer ID 签名与 Apple 公证](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)。
 
 ## 发布新版本
 
-将 `package.json` 和 `package-lock.json` 的项目版本一起升级（例如 0.2.3），提交修改后推送对应的 `v0.2.3` 标签。标签版本必须与 `package.json` 完全相同，发布渠道仅接受 `x.y.z` 正式版本。
+将 `package.json` 和 `package-lock.json` 的项目版本一起升级（例如 0.3.1），提交修改后推送对应的 `v0.3.1` 标签。标签版本必须与 `package.json` 完全相同，发布渠道仅接受 `x.y.z` 正式版本。
 
-仓库的「Build macOS release」工作流会在 macOS 上安装依赖、检查 TypeScript、运行更新安全回归并构建以下附件：
+仓库的「Build release」工作流同时构建 macOS arm64、Linux x64 与 Linux arm64。Linux 在真实 Ubuntu runner 上运行原有 UI 回归、平台快捷键检查，并验证打包的 AppImage 和实际安装的 `.deb`。所有平台通过后，由一个发布任务汇总完整附件并生成同一份 Release 草稿。以 0.3.0 为例：
 
-- `Inkleaf-0.2.3-mac-arm64.zip`：ZIP 根目录是 `Inkleaf.app`，保留应用包的符号链接。
-- `Inkleaf-0.2.3-mac-arm64.zip.sha256`：供手动下载时核对的 SHA-256 校验文件。
+- `Inkleaf-0.3.0-mac-arm64.zip`：ZIP 根目录是 `Inkleaf.app`，保留应用包的符号链接。
+- `Inkleaf-0.3.0-linux-x64.AppImage` / `.deb`：x64 便携版与 Debian 安装包。
+- `Inkleaf-0.3.0-linux-arm64.AppImage` / `.deb`：arm64 便携版与 Debian 安装包。
+- 每个附件都有同名 `.sha256` 文件，供手动下载时核对。
 
-推送标签默认生成 GitHub Release **草稿**。检查附件与版本说明后，在 GitHub 点击「Publish release」即可让软件发现更新；也可以手动运行工作流，填写现有标签并勾选 `publish`。重跑工作流可以补齐或重建同一草稿的附件，已经发布的版本会拒绝覆盖，修复应发布新的版本号。客户端只读取公开的正式 Release，无需登录 GitHub，应用中不包含发布令牌。
+推送标签默认生成 GitHub Release **草稿**。检查完整的平台附件与版本说明后，在 GitHub 点击「Publish release」即可让软件发现更新；也可以手动运行工作流，填写现有标签并勾选 `publish`，待全部平台验证通过后再统一发布。重跑工作流可以补齐或重建同一草稿的附件，已经发布的版本会拒绝覆盖，修复应发布新的版本号。客户端只读取公开的正式 Release，无需登录 GitHub，应用中不包含发布令牌。
 
 也可以在本机准备同样的附件：
 
 ```bash
 npm run typecheck
 npm run test:updates
+npm run test:platform
+# macOS arm64
 npm run release:build
-# 可选：在 Intel Mac 或跨架构构建时显式指定
-npm run release:build -- --arch x64
+# 或在对应架构的原生 Linux 上构建；需要 gcc、dpkg 与 fpm 打包工具
+npm run release:linux -- --arch x64
+npm run release:linux -- --arch arm64
 cd dist
-shasum -a 256 -c Inkleaf-0.2.3-mac-arm64.zip.sha256
+shasum -a 256 -c Inkleaf-0.3.0-mac-arm64.zip.sha256
+# Linux：sha256sum -c Inkleaf-0.3.0-linux-x64.AppImage.sha256
 ```
 
-本机构建命令只生成文件，不上传或发布。发布时将 ZIP 和校验文件一起上传到同版本 Release；客户端使用 GitHub API 返回的资产摘要核验下载，而非把旁边的校验文本文件作为独立信任来源。
+本机构建命令只生成文件，不上传或发布。Linux 构建要求宿主架构与目标一致，确保更新助手和实际启动检查使用同一架构。发布时将全部五个应用附件与校验文件一起上传到同版本 Release；发布脚本核对完整附件集、本地 SHA-256 和 GitHub 返回的资产摘要，避免把半成品标为最新版本。客户端使用 GitHub API 返回的资产摘要核验下载，而非把旁边的校验文本文件作为独立信任来源。
 
 ## 视觉设计
 

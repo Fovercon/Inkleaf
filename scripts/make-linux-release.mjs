@@ -1,6 +1,6 @@
 // Native Linux build: helper, Electron, and installer architecture must agree.
 import { createReadStream } from 'node:fs'
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, open, readFile, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
@@ -33,7 +33,12 @@ if (bundled.version !== pkg.version || bundled.name !== 'inkleaf') throw new Err
 const helper = path.join(unpacked, 'resources', 'app', 'out', 'inkleaf-update-helper')
 await access(helper)
 const readElf = async filename => {
-  const data = await readFile(filename)
+  const file = await open(filename, 'r')
+  const data = Buffer.alloc(64)
+  try {
+    const { bytesRead } = await file.read(data, 0, data.length, 0)
+    if (bytesRead !== data.length) throw new Error(`ELF header is incomplete: ${filename}`)
+  } finally { await file.close() }
   const machine = arch === 'x64' ? 62 : 183
   if (data.subarray(0, 4).toString('hex') !== '7f454c46' || data[4] !== 2 || data[5] !== 1 || data.readUInt16LE(18) !== machine) throw new Error(`ELF architecture mismatch: ${filename}`)
   return data

@@ -214,6 +214,8 @@ export async function installUpdate(): Promise<UpdateState> {
       await fs.copyFile(downloaded, staged, constants.COPYFILE_EXCL)
       await fs.chmod(staged, 0o700)
       await validateAppImageFile(staged, process.arch, true)
+      const stagedFile = await fs.open(staged, constants.O_RDONLY | constants.O_NOFOLLOW)
+      try { await stagedFile.sync() } finally { await stagedFile.close() }
     } else {
       await validateArchive(downloaded)
       await execute('/usr/bin/ditto', ['-x', '-k', downloaded, job])

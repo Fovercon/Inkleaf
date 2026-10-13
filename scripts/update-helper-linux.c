@@ -104,7 +104,10 @@ static void json_string(FILE *stream, const char *value) {
 static bool write_result(const char *state, const char *message) {
   if (private_fd < 0 || !result_name[0]) return false;
   char temporary[NAME_MAX + 1];
-  snprintf(temporary, sizeof(temporary), ".result-%ld-%08x.tmp", (long)getpid(), arc4random());
+  static unsigned int sequence = 0;
+  /* The directory is private and O_EXCL prevents collisions. Avoid arc4random,
+   * which is absent from older glibc versions supported by Electron. */
+  snprintf(temporary, sizeof(temporary), ".result-%ld-%u.tmp", (long)getpid(), ++sequence);
   int fd = openat(private_fd, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
   if (fd < 0) return false;
   FILE *stream = fdopen(fd, "w");
@@ -298,9 +301,16 @@ static bool sha256_text(const char *hash) {
 static bool atomic_install(void) {
   if (linkat(target_parent_fd, target_name, private_fd, backup_name, 0) != 0)
     return system_fail("Cannot retain the previous AppImage");
-  if (fsync(private_fd) != 0) return system_fail("Cannot persist the AppImage backup");
-  if (renameat(private_fd, staged_name, target_parent_fd, target_name) != 0)
-    return system_fail("Cannot atomically replace the AppImage");
+  if (fsync(private_fd) != 0) {
+    system_fail("Cannot persist the AppImage backup");
+    unlinkat(private_fd, backup_name, 0);
+    return false;
+  }
+  if (renameat(private_fd, staged_name, target_parent_fd, target_name) != 0) {
+    system_fail("Cannot atomically replace the AppImage");
+    unlinkat(private_fd, backup_name, 0);
+    return false;
+  }
   return true;
 }
 
@@ -362,6 +372,9 @@ int main(int argc, char **argv) {
       lock_info.st_uid != getuid() || lock_info.st_nlink != 1 || flock(lock_fd, LOCK_EX | LOCK_NB)) {
     fail("Another update is in progress or the AppImage directory is not writable"); goto error;
   }
+  /* Do not retain the old AppImage's temporary FUSE mount as our working
+   * directory after it exits. The new runtime needs a stable working directory. */
+  if (fchdir(target_parent_fd) != 0) { system_fail("Cannot enter the AppImage installation directory"); goto error; }
   if (!real_file(target_path, &original_target) || !real_file(staged_path, &original_staged) ||
       original_target.st_dev != original_staged.st_dev || original_target.st_nlink != 1 || original_staged.st_nlink != 1 ||
       !validate_image(target_path, true) || !validate_image(staged_path, true) ||
@@ -369,8 +382,12 @@ int main(int argc, char **argv) {
   if (!write_result("waiting", "Ready to install after Inkleaf exits")) { fail("Cannot persist the update transaction"); goto error; }
   if (!wait_for_exit((pid_t)parent)) goto error;
   parent_exited = true;
-  struct stat latest_target, latest_staged;
+  struct stat latest_target, latest_staged, latest_parent, latest_private;
   if (!real_file(target_path, &latest_target) || !real_file(staged_path, &latest_staged) ||
+      !real_directory(target_parent, &latest_parent) || !real_directory(private_path, &latest_private) ||
+      latest_parent.st_dev != parent_info.st_dev || latest_parent.st_ino != parent_info.st_ino ||
+      latest_private.st_dev != private_info.st_dev || latest_private.st_ino != private_info.st_ino ||
+      latest_private.st_uid != getuid() || (latest_private.st_mode & 0777) != 0700 ||
       original_target.st_dev != latest_target.st_dev || original_target.st_ino != latest_target.st_ino ||
       original_staged.st_dev != latest_staged.st_dev || original_staged.st_ino != latest_staged.st_ino ||
       latest_target.st_dev != latest_staged.st_dev || latest_target.st_nlink != 1 || latest_staged.st_nlink != 1 ||

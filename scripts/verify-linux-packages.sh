@@ -21,8 +21,13 @@ if grep -R -- '--no-sandbox' .linux-appimage-smoke/squashfs-root/*.desktop; then
   exit 1
 fi
 test -x .linux-appimage-smoke/squashfs-root/resources/app/out/inkleaf-update-helper
+mkdir -p verify
 MDR_TEST=1 MDR_ROUND="linux-$arch-appimage" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' .linux-appimage-smoke/squashfs-root/AppRun --disable-gpu 2>&1 | tee "verify/linux-$arch-appimage.log"
 grep -q 'verify screenshot written' "verify/linux-$arch-appimage.log"
+
+# Also exercise the real FUSE runtime, which supplies APPIMAGE for self-update.
+MDR_TEST=1 MDR_ROUND="linux-$arch-appimage-runtime" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' "$image" --disable-gpu 2>&1 | tee "verify/linux-$arch-appimage-runtime.log"
+grep -q 'verify screenshot written' "verify/linux-$arch-appimage-runtime.log"
 
 # Exercise the installed deb as a normal user; only installation uses sudo.
 sudo apt-get install -y "$deb"

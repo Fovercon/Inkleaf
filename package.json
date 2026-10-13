@@ -17,7 +17,8 @@
     "release:linux": "node scripts/make-linux-release.mjs",
     "icon": "node scripts/make-icon.mjs",
     "test:updates": "node scripts/test-updater.mjs",
-    "test:platform": "node scripts/test-platform.mjs"
+    "test:platform": "node scripts/test-platform.mjs",
+    "test:platform-ui": "node scripts/test-platform-ui.mjs"
   },
   "build": {
     "appId": "com.fovercon.inkleaf",

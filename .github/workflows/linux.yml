@@ -61,6 +61,9 @@ jobs:
           MDR_TEST=1 MDR_ROUND="linux-${{ matrix.arch }}-development" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:ui -- --disable-gpu 2>&1 | tee "verify/linux-${{ matrix.arch }}-development.log"
           grep -q 'verify screenshot written' "verify/linux-${{ matrix.arch }}-development.log"
 
+      - name: Verify platform shortcuts and window chrome
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:platform-ui
+
       - name: Build native AppImage and deb
         run: npm run release:linux -- --arch ${{ matrix.arch }}
 
