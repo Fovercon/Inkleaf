@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { createReadStream } from 'node:fs'
 import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { createHash, randomBytes } from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -33,6 +33,7 @@ let wroteTicket = false
 let child
 let mayHaveLaunched = false
 let appStopped = false
+const processDiagnostics = new Map()
 const digest = async filename => {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(filename)) hash.update(chunk)
@@ -44,20 +45,43 @@ async function ownedAppProcesses() {
     if (!entry.isDirectory() || !/^\d+$/.test(entry.name)) continue
     const pid = Number(entry.name), proc = path.join('/proc', entry.name)
     try {
-      if ((await stat(proc)).uid !== process.getuid()) continue
+      // /proc directory ownership can become root when Chromium disables
+      // dumpability. Use the actual process real/effective UIDs from status.
+      const status = await readFile(path.join(proc, 'status'), 'utf8')
+      const uids = status.match(/^Uid:\s+(\d+)\s+(\d+)/m)
+      if (!uids || Number(uids[1]) !== process.getuid() || Number(uids[2]) !== process.getuid()) continue
       const argv = (await readFile(path.join(proc, 'cmdline'))).toString('utf8').split('\0').filter(Boolean)
       const flag = argv.indexOf('--inkleaf-update')
-      if (flag < 0 || argv[flag + 1] !== nonce || argv.some(arg => arg === '--type' || arg.startsWith('--type='))) continue
-      const executable = await readlink(path.join(proc, 'exe'))
+      if (!((flag >= 0 && argv[flag + 1] === nonce) || argv.includes(`--inkleaf-update=${nonce}`)) || argv.some(arg => arg === '--type' || arg.startsWith('--type='))) continue
+      let executable
+      try { executable = await readlink(path.join(proc, 'exe')) }
+      catch (error) {
+        if (error.code !== 'EACCES') throw error
+        // CI-only read access, no changes to sandbox or process permissions.
+        executable = execFileSync('sudo', ['-n', 'readlink', path.join(proc, 'exe')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+      }
+      let environment = []
+      let environmentReadable = true
+      try { environment = (await readFile(path.join(proc, 'environ'))).toString('utf8').split('\0') }
+      catch (error) { if (error.code === 'EACCES') environmentReadable = false; else throw error }
+      const diagnostic = JSON.stringify({ pid, realUid: Number(uids[1]), effectiveUid: Number(uids[2]), executable,
+        environmentReadable, hasAPPIMAGE: environment.some(value => value.startsWith('APPIMAGE=')), appImageMatches: environment.includes(`APPIMAGE=${target}`) })
+      if (processDiagnostics.get(pid) !== diagnostic) { console.log('[boot-process]', diagnostic); processDiagnostics.set(pid, diagnostic) }
       if (executable === target && argv[0] === target) found.push({ pid, kind: 'runtime' })
       else if (path.basename(executable) === 'inkleaf' && executable.startsWith('/tmp/.mount_Inklea')) {
-        const environment = (await readFile(path.join(proc, 'environ'))).toString('utf8').split('\0')
-        if (environment.includes(`APPIMAGE=${target}`)) {
-          assert.ok(!argv.includes('--no-sandbox') && !argv.includes('--disable-setuid-sandbox'))
-          found.push({ pid, kind: 'electron' })
-        }
+        assert.ok(!argv.includes('--no-sandbox') && !argv.includes('--disable-setuid-sandbox'))
+        // uid + exact nonce + trusted mounted executable are the authority.
+        // /proc/environ is diagnostic only: dumpability/setenv can hide it.
+        found.push({ pid, kind: 'electron' })
       }
-    } catch (error) { if (!['ENOENT', 'ESRCH', 'EACCES'].includes(error.code)) throw error }
+    } catch (error) {
+      if (['ENOENT', 'ESRCH', 'EACCES'].includes(error.code)) continue
+      // A CI-only readlink may race a process disappearing after SIGTERM.
+      if (typeof error.status === 'number') {
+        try { await stat(proc) } catch (gone) { if (gone.code === 'ENOENT') continue }
+      }
+      throw error
+    }
   }
   return found
 }
@@ -67,14 +91,22 @@ async function stopOwnedApp(requireRunning) {
   if (requireRunning) assert.equal(main.length, 1, 'Exactly one genuine updated Electron main process must be running')
   if (main.length > 1) throw new Error('Refusing to signal ambiguous application processes')
   if (main.length === 1) {
-    // Recheck owner, executable, APPIMAGE and nonce immediately before signaling.
+    // Recheck owner, mounted executable and exact nonce before signaling.
     const confirmed = (await ownedAppProcesses()).some(entry => entry.kind === 'electron' && entry.pid === main[0].pid)
     assert.ok(confirmed, 'The isolated main PID changed before graceful shutdown')
+    console.log(`[boot-ack-check] requesting normal exit of nonce-bound main PID ${main[0].pid}`)
     process.kill(main[0].pid, 'SIGTERM')
   }
   const deadline = Date.now() + 30000
+  const trackedPids = new Set(running.map(entry => entry.pid))
   while (Date.now() < deadline) {
-    if ((await ownedAppProcesses()).length === 0) { appStopped = true; return }
+    const remaining = await ownedAppProcesses()
+    for (const entry of remaining) trackedPids.add(entry.pid)
+    for (const pid of trackedPids) {
+      try { await stat(path.join('/proc', String(pid))) }
+      catch (error) { if (error.code === 'ENOENT') trackedPids.delete(pid); else throw error }
+    }
+    if (remaining.length === 0 && trackedPids.size === 0) { appStopped = true; return }
     await new Promise(resolve => setTimeout(resolve, 100))
   }
   throw new Error('The isolated updated AppImage did not stop after SIGTERM; its image and backup are retained')
