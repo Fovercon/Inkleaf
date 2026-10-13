@@ -7,20 +7,26 @@ import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { Readable } from 'node:stream'
 import type { UpdateState } from '../shared/updates'
-import { RELEASE_API, selectRelease, validateDownloadHost, type UpdateCandidate } from './updatePolicy'
+import { RELEASE_API, selectRelease, selectManualRelease, validateDownloadHost, type UpdateCandidate, type ReleaseSummary } from './updatePolicy'
 import { validateArchive } from './updateArchive'
+import { appImageTarget, validateAppImageFile } from './linuxAppImage'
 
 const execute = promisify(execFile)
 let state: UpdateState
-let candidate: UpdateCandidate | null = null
+let candidate: UpdateCandidate | ReleaseSummary | null = null
 let downloaded: string | null = null
 let downloadAbort: AbortController | null = null
 let installBusy = false
 const cacheRoot = () => path.join(app.getPath('userData'), 'updates')
 const transactionFile = () => path.join(cacheRoot(), 'transaction.json')
+const manualMessage = '请在版本页面下载新版 deb，并使用系统包管理器安装更新；此安装方式不会自动替换应用。'
+
+function automaticCandidate(): UpdateCandidate | null {
+  return state.installationKind !== 'deb' && candidate && 'sha256' in candidate ? candidate : null
+}
 
 function setState(status: UpdateState['status'], message?: string, progress?: number) {
-  state = { currentVersion: app.getVersion(), status, message, progress,
+  state = { currentVersion: app.getVersion(), installationKind: state?.installationKind, status, message, progress,
     ...(candidate ? { version: candidate.version, releaseNotes: candidate.notes, releaseUrl: candidate.releaseUrl } : {}) }
   BrowserWindow.getAllWindows().forEach(w => w.webContents.send('update:state', state))
   return state
@@ -96,14 +102,19 @@ export async function checkForUpdates(): Promise<UpdateState> {
       if (length > 2 * 1024 ** 2) { await reader.cancel(); throw new Error('更新信息过大') }
       chunks.push(value)
     }
-    candidate = selectRelease(JSON.parse(Buffer.concat(chunks).toString('utf8')), app.getVersion(), process.arch)
-    return candidate ? setState('available', `发现新版本 ${candidate.version}`) : setState('up-to-date', '已经是最新版本')
+    const release = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    candidate = state.installationKind === 'deb' ? selectManualRelease(release, app.getVersion())
+      : selectRelease(release, app.getVersion(), process.arch, process.platform)
+    return candidate ? setState('available', state.installationKind === 'deb' ? `发现新版本 ${candidate.version}。${manualMessage}` : `发现新版本 ${candidate.version}`)
+      : setState('up-to-date', state.installationKind === 'deb' ? `已经是最新版本。${manualMessage}` : '已经是最新版本')
   } catch (e) { return setState('error', controller.signal.aborted ? '检查更新超时，请检查网络后重试' : reason(e)) }
   finally { clearTimeout(timeout) }
 }
 export function downloadUpdate(): UpdateState {
-  if (!candidate || !['available', 'error'].includes(state.status) || downloadAbort || installBusy) return state
-  const update = candidate, controller = new AbortController()
+  if (state.installationKind === 'deb') return setState(state.status, manualMessage)
+  const update = automaticCandidate()
+  if (!update || !['available', 'error'].includes(state.status) || downloadAbort || installBusy) return state
+  const controller = new AbortController()
   downloadAbort = controller
   setState('downloading', '正在下载更新…', 0)
   void (async () => {
@@ -112,7 +123,7 @@ export function downloadUpdate(): UpdateState {
     try {
       await fs.mkdir(cacheRoot(), { recursive: true, mode: 0o700 })
       directory = await fs.mkdtemp(path.join(cacheRoot(), 'download-'))
-      const filename = path.join(directory, 'update.zip')
+      const filename = path.join(directory, state.installationKind === 'appimage' ? 'update.AppImage' : 'update.zip')
       const res = await request(update.url, controller.signal)
       if (!res.ok || !res.body) throw new Error('更新包下载失败，请稍后重试')
       const reader = res.body.getReader(), hash = createHash('sha256')
@@ -136,7 +147,8 @@ export function downloadUpdate(): UpdateState {
       } finally { await file.close() }
       if (controller.signal.aborted) throw new Error('下载已取消')
       if (received !== update.size || hash.digest('hex') !== update.sha256) throw new Error('更新包完整性校验失败，请重新下载')
-      await validateArchive(filename)
+      if (state.installationKind === 'appimage') await validateAppImageFile(filename, process.arch)
+      else await validateArchive(filename)
       if (controller.signal.aborted) throw new Error('下载已取消')
       downloaded = filename; directory = null
       setState('ready', '更新已下载，保存文档后即可重启安装', 100)
@@ -175,16 +187,18 @@ async function validateBundle(bundle: string, version: string) {
   await fs.access(executable, constants.X_OK)
 }
 export async function installUpdate(): Promise<UpdateState> {
-  if (!candidate || !downloaded || state.status !== 'ready' || installBusy) return state
+  if (state.installationKind === 'deb') return setState(state.status, manualMessage)
+  const update = automaticCandidate()
+  if (!update || !downloaded || state.status !== 'ready' || installBusy) return state
   installBusy = true
-  const update = candidate
   let job: string | null = null, launched = false
   let helperChild: ReturnType<typeof spawn> | null = null
   setState('installing', '正在准备重启安装…', 100)
   try {
-    const target = path.resolve(app.getPath('exe'), '../../..')
+    const linux = state.installationKind === 'appimage'
+    const target = linux ? await appImageTarget(process.env.APPIMAGE, process.arch) : path.resolve(app.getPath('exe'), '../../..')
     const parent = path.dirname(target)
-    if (path.basename(target) !== 'Inkleaf.app' || target.includes('/AppTranslocation/') || target.startsWith('/Volumes/')) throw new Error('请先把 Inkleaf 放进「应用程序」再更新')
+    if (!linux && (path.basename(target) !== 'Inkleaf.app' || target.includes('/AppTranslocation/') || target.startsWith('/Volumes/'))) throw new Error('请先把 Inkleaf 放进「应用程序」再更新')
     const actual = await fs.realpath(target)
     if (actual !== target || (await fs.lstat(target)).isSymbolicLink() || await fs.realpath(parent) !== parent) throw new Error('当前应用安装路径不支持自动更新')
     await fs.access(parent, constants.W_OK)
@@ -194,10 +208,17 @@ export async function installUpdate(): Promise<UpdateState> {
     const hash = createHash('sha256')
     for await (const chunk of createReadStream(downloaded)) hash.update(chunk)
     if ((await fs.stat(downloaded)).size !== update.size || hash.digest('hex') !== update.sha256) throw new Error('更新包完整性校验失败，请重新下载')
-    await validateArchive(downloaded)
-    await execute('/usr/bin/ditto', ['-x', '-k', downloaded, job])
-    const staged = path.join(job, 'Inkleaf.app')
-    await validateBundle(staged, update.version)
+    const staged = path.join(job, linux ? 'Inkleaf.AppImage' : 'Inkleaf.app')
+    if (linux) {
+      await validateAppImageFile(downloaded, process.arch)
+      await fs.copyFile(downloaded, staged, constants.COPYFILE_EXCL)
+      await fs.chmod(staged, 0o700)
+      await validateAppImageFile(staged, process.arch, true)
+    } else {
+      await validateArchive(downloaded)
+      await execute('/usr/bin/ditto', ['-x', '-k', downloaded, job])
+      await validateBundle(staged, update.version)
+    }
     if ((await fs.stat(target)).dev !== (await fs.stat(staged)).dev) throw new Error('更新暂存目录必须与应用在同一磁盘')
     const helper = path.join(job, 'install-helper')
     await fs.copyFile(path.join(__dirname, 'inkleaf-update-helper'), helper, constants.COPYFILE_EXCL)
@@ -243,7 +264,7 @@ async function acknowledgeStartup() {
   if (!/^[a-f0-9]{48}$/.test(nonce ?? '')) return
   try {
     const ticket = JSON.parse(await fs.readFile(transactionFile(), 'utf8'))
-    const target = path.resolve(app.getPath('exe'), '../../..')
+    const target = process.platform === 'linux' ? await appImageTarget(process.env.APPIMAGE, process.arch) : path.resolve(app.getPath('exe'), '../../..')
     if (ticket.nonce !== nonce || ticket.version !== app.getVersion() || ticket.target !== target) return
     if (path.dirname(ticket.job) !== path.dirname(target) || !path.basename(ticket.job).startsWith('.inkleaf-update-') || ticket.ack !== path.join(ticket.job, 'boot-ack')) return
     const info = await fs.lstat(ticket.job)
@@ -252,8 +273,10 @@ async function acknowledgeStartup() {
   } catch { /* Only the matching update launch can acknowledge this installation. */ }
 }
 export function initializeUpdater() {
-  state = { status: app.isPackaged && process.platform === 'darwin' && process.arch === 'arm64' && !process.env.MDR_TEST ? 'idle' : 'unsupported', currentVersion: app.getVersion(),
-    message: app.isPackaged ? undefined : '开发模式不安装更新，请使用安装后的 Inkleaf' }
+  const installationKind = process.platform === 'darwin' ? 'mac-app' : process.platform === 'linux' ? process.env.APPIMAGE ? 'appimage' : 'deb' : undefined
+  const supported = process.platform === 'darwin' ? process.arch === 'arm64' : process.platform === 'linux' && ['x64', 'arm64'].includes(process.arch)
+  state = { status: app.isPackaged && supported && !process.env.MDR_TEST ? 'idle' : 'unsupported', currentVersion: app.getVersion(), installationKind,
+    message: !app.isPackaged ? '开发模式不安装更新，请使用安装后的 Inkleaf' : installationKind === 'deb' ? manualMessage : undefined }
   const handle = (channel: string, action: () => unknown) => ipcMain.handle(channel, event => {
     const frame = event.senderFrame
     if (!frame || frame !== event.sender.mainFrame) throw new Error('更新请求来源无效')

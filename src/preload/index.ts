@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { UpdateState } from '../shared/updates'
 
 const api = {
+  platform: process.platform,
+  sandboxed: process.sandboxed === true,
+  rendererReady: (): void => ipcRenderer.send('app:renderer-ready'),
   getUpdateState: (): Promise<UpdateState> => ipcRenderer.invoke('update:getState'),
   checkForUpdates: (): Promise<UpdateState> => ipcRenderer.invoke('update:check'),
   downloadUpdate: (): Promise<UpdateState> => ipcRenderer.invoke('update:download'),
@@ -65,4 +68,4 @@ const api = {
 
 contextBridge.exposeInMainWorld('mdr', api)
 
-export type MdrApi = typeof api
+export type MdrApi = Readonly<typeof api>

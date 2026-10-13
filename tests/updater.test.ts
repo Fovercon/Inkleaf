@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
-import { selectRelease, validateDownloadHost, MAX_ARCHIVE_BYTES } from '../src/main/updatePolicy'
+import { selectRelease, selectManualRelease, validateDownloadHost, MAX_ARCHIVE_BYTES } from '../src/main/updatePolicy'
 import { validateArchive } from '../src/main/updateArchive'
+import { appImageTarget, validateAppImageFile, validateAppImageHeader } from '../src/main/linuxAppImage'
 
 const digest = 'a1'.repeat(32)
 const version = '0.3.0'
@@ -87,6 +88,118 @@ test('selectRelease binds the update to this repository, version and architectur
   for (const arch of ['x64', 'ia32', '', 'arm64/../../other']) {
     assert.throws(() => selectRelease(release(), '0.2.0', arch))
   }
+})
+
+test('Linux selects only the matching native AppImage with its GitHub digest', () => {
+  for (const arch of ['x64', 'arm64']) {
+    const name = `Inkleaf-${version}-linux-${arch}.AppImage`
+    const value = release({}, { name, browser_download_url: `https://github.com/Fovercon/Inkleaf/releases/download/v${version}/${name}` })
+    assert.equal(selectRelease(value, '0.2.2', arch, 'linux')?.sha256, digest)
+    assert.equal(selectRelease(value, '0.3.0', arch, 'linux'), null)
+    assert.throws(() => selectRelease(value, '0.2.2', arch === 'x64' ? 'arm64' : 'x64', 'linux'))
+    assert.throws(() => selectRelease({ ...value, assets: [{ ...value.assets[0], name: name.replace('.AppImage', '.deb') }] }, '0.2.2', arch, 'linux'))
+    assert.throws(() => selectRelease({ ...value, assets: [{ ...value.assets[0], digest: undefined }] }, '0.2.2', arch, 'linux'))
+    assert.throws(() => selectRelease({ ...value, assets: [{ ...value.assets[0], browser_download_url: value.assets[0].browser_download_url.replace('Fovercon', 'Other') }] }, '0.2.2', arch, 'linux'))
+  }
+  assert.throws(() => selectRelease(release(), '0.2.2', 'ia32', 'linux'))
+  assert.throws(() => selectRelease(release(), '0.2.2', 'x64', 'win32'))
+})
+
+test('package-managed Linux installs announce official stable versions without enabling a download', () => {
+  const summary = selectManualRelease(release({ assets: [] }), '0.2.2')
+  assert.ok(summary)
+  assert.equal(summary.releaseUrl, 'https://github.com/Fovercon/Inkleaf/releases/tag/v0.3.0')
+  assert.equal('url' in summary, false)
+  assert.equal(selectManualRelease(release(), '0.3.0'), null)
+  assert.throws(() => selectManualRelease(release({ prerelease: true }), '0.2.2'))
+})
+
+function appImageHeader(arch: string): Buffer {
+  const header = Buffer.alloc(64)
+  header.writeUInt32BE(0x7f454c46, 0)
+  header[4] = 2; header[5] = 1; header[6] = 1
+  header.set([0x41, 0x49, 0x02], 8)
+  header.writeUInt16LE(2, 16)
+  header.writeUInt16LE(arch === 'arm64' ? 183 : 62, 18)
+  header.writeUInt16LE(64, 52)
+  return header
+}
+
+test('AppImage inspection rejects invalid runtimes and another processor before execution', () => {
+  for (const arch of ['x64', 'arm64']) {
+    assert.doesNotThrow(() => validateAppImageHeader(appImageHeader(arch), arch))
+    assert.throws(() => validateAppImageHeader(appImageHeader(arch), arch === 'x64' ? 'arm64' : 'x64'))
+    for (const offset of [0, 4, 5, 6, 8, 9, 10, 16, 18, 52]) {
+      const header = appImageHeader(arch); header[offset] = 0
+      assert.throws(() => validateAppImageHeader(header, arch))
+    }
+  }
+  assert.throws(() => validateAppImageHeader(Buffer.alloc(10), 'x64'))
+  assert.throws(() => validateAppImageHeader(appImageHeader('x64'), 'ia32'))
+})
+
+test('AppImage paths reject symlinks, hardlinks, non-executable files and foreign filenames', async t => {
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'inkleaf-appimage-fixture-')))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const filename = path.join(directory, 'Inkleaf.AppImage')
+  await writeFile(filename, appImageHeader('x64'), { mode: 0o700 })
+  await assert.doesNotReject(validateAppImageFile(filename, 'x64', true))
+  assert.equal(await appImageTarget(filename, 'x64'), filename)
+  const alias = path.join(directory, 'Inkleaf-alias.AppImage')
+  await symlink(filename, alias)
+  await assert.rejects(appImageTarget(alias, 'x64'))
+  const hardlink = path.join(directory, 'Inkleaf-hardlink.AppImage')
+  await link(filename, hardlink)
+  await assert.rejects(validateAppImageFile(filename, 'x64'))
+  await rm(hardlink)
+  await chmod(filename, 0o600)
+  await assert.rejects(appImageTarget(filename, 'x64'))
+  await chmod(filename, 0o700)
+  await assert.rejects(appImageTarget(path.join(directory, 'Other.AppImage'), 'x64'))
+  await assert.rejects(appImageTarget(undefined, 'x64'))
+  await assert.rejects(appImageTarget('Inkleaf.AppImage', 'x64'))
+})
+
+test('Linux native helper replaces atomically, keeps backup, verifies both payloads and observes boot ACK', { skip: process.platform !== 'linux' }, async t => {
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'inkleaf-linux-helper-')))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const helper = path.join(directory, 'install-helper'), fixture = path.join(directory, 'fixture.c')
+  execFileSync('gcc', ['-O2', '-Wall', '-Wextra', 'scripts/update-helper-linux.c', '-o', helper])
+  await writeFile(fixture, `#include <stdio.h>\n#include <stdlib.h>\nint main(int argc,char **argv) { if(argc==3) { FILE *f=fopen(getenv("INKLEAF_FIXTURE_ACK"),"w"); if(!f)return 1; fputs(argv[2],f); fclose(f); } return 0; }\n`)
+  const original = path.join(directory, 'runtime')
+  execFileSync('gcc', [fixture, '-o', original])
+  const executable = await readFile(original)
+  executable.set([0x41, 0x49, 0x02], 8)
+  await writeFile(original, executable, { mode: 0o700 })
+  const nonce = 'a1'.repeat(24)
+  const { createHash } = await import('node:crypto')
+  const digest = createHash('sha256').update(executable).digest('hex')
+  const target = path.join(directory, 'Inkleaf.AppImage')
+  await copyFile(original, target); await chmod(target, 0o700)
+  const job = path.join(directory, '.inkleaf-update-success')
+  await mkdir(job, { mode: 0o700 })
+  const staged = path.join(job, 'Inkleaf.AppImage'), source = path.join(job, 'download.AppImage')
+  await copyFile(original, staged); await chmod(staged, 0o700)
+  await copyFile(original, source)
+  const ack = path.join(job, 'boot-ack'), result = path.join(job, 'result.json')
+  execFileSync(helper, [target, staged, source, digest, '2147483647', ack, nonce, '0.3.0', result], { env: { ...process.env, INKLEAF_FIXTURE_ACK: ack }, timeout: 10000 })
+  assert.equal(await readFile(ack, 'utf8'), nonce)
+  const receipt = JSON.parse(await readFile(result, 'utf8'))
+  assert.equal(receipt.state, 'installed')
+  assert.equal(receipt.version, '0.3.0')
+  assert.deepEqual(await readFile(receipt.backupPath), executable)
+  assert.deepEqual(await readFile(target), executable)
+  // A valid download cannot authorize a modified staged executable.
+  const badJob = path.join(directory, '.inkleaf-update-tampered')
+  await mkdir(badJob, { mode: 0o700 })
+  const badStage = path.join(badJob, 'Inkleaf.AppImage')
+  await copyFile(original, badStage); await chmod(badStage, 0o700)
+  const altered = Buffer.from(executable); altered[altered.length - 1] ^= 1
+  await writeFile(badStage, altered)
+  const badResult = path.join(badJob, 'result.json')
+  assert.throws(() => execFileSync(helper, [target, badStage, source, digest, '2147483647', path.join(badJob, 'boot-ack'), nonce, '0.3.0', badResult]))
+  assert.equal(JSON.parse(await readFile(badResult, 'utf8')).state, 'error')
+  assert.deepEqual(await readFile(target), executable)
 })
 
 test('redirect allowlist accepts GitHub HTTPS assets only and isolates API requests', () => {

@@ -13,6 +13,7 @@ import { setupLightbox } from './lightbox'
 import { openPalette } from './commandPalette'
 import { buildStandaloneHtml } from './export'
 import { setupUpdater } from './updater'
+import { setupPlatformUi } from './platform'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -616,6 +617,7 @@ function setupDragDrop() {
 // ---------------- boot ----------------
 
 async function boot() {
+  setupPlatformUi()
   applyTheme()
   applyFontScale(getState().fontScale)
   editor.mount(editorHost, currentTheme() === 'dark')
@@ -654,7 +656,7 @@ async function boot() {
     void insertImageFrom((e as CustomEvent).detail?.src)
   })
 
-  // macOS: file double-clicked in Finder / dock recent files
+  // Files opened from the system file manager, command line, or recent files.
   window.mdr.onOpenPath((p) => {
     void (async () => {
       if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
@@ -731,6 +733,7 @@ async function boot() {
     const lib = q.get('lib') ?? ''
     await openLibrary(lib)
     if (runtime.libraryRoot) await openFile(`${runtime.libraryRoot}/README.md`)
+    window.mdr.rendererReady()
     return
   }
 
@@ -741,8 +744,9 @@ async function boot() {
   }
   const lastFile = session.lastFile
   if (typeof lastFile === 'string' && lastFile) {
-    void openFile(lastFile)
+    await openFile(lastFile)
   }
+  window.mdr.rendererReady()
 }
 
 window.addEventListener('beforeunload', () => {

@@ -322,15 +322,15 @@ export function registerIpc() {
 
   // macOS window chrome: unsaved dot + proxy file icon in the titlebar
   ipcMain.handle('win:edited', (_e, edited: boolean) => {
-    BrowserWindow.getAllWindows().forEach((w) => w.setDocumentEdited(edited))
+    if (process.platform === 'darwin') BrowserWindow.getAllWindows().forEach((w) => w.setDocumentEdited(edited))
   })
   ipcMain.handle('win:file', (_e, p: string | null) => {
     BrowserWindow.getAllWindows().forEach((w) => {
       if (p) {
-        w.setRepresentedFilename(p)
+        if (process.platform === 'darwin') w.setRepresentedFilename(p)
         w.setTitle(p.split('/').pop() ?? '墨页 · Inkleaf')
       } else {
-        w.setRepresentedFilename('')
+        if (process.platform === 'darwin') w.setRepresentedFilename('')
         w.setTitle('墨页 · Inkleaf')
       }
     })

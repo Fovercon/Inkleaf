@@ -1,0 +1,89 @@
+name: Validate Linux packages
+
+on:
+  push:
+    branches: ['main', 'codex/**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Commit or tag to build; empty uses this workflow commit'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
+    env:
+      USE_SYSTEM_FPM: 'true'
+      ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Prepare Linux desktop and native packaging tools
+        run: bash scripts/prepare-linux-ci.sh
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type and security checks
+        run: |
+          npm run typecheck
+          npm run test:updates
+          npm run test:platform
+
+      - name: Exercise real Electron UI under Xvfb with sandbox enabled
+        shell: bash
+        run: |
+          mkdir -p verify
+          MDR_TEST=1 MDR_ROUND="linux-${{ matrix.arch }}-development" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:ui -- --disable-gpu 2>&1 | tee "verify/linux-${{ matrix.arch }}-development.log"
+          grep -q 'verify screenshot written' "verify/linux-${{ matrix.arch }}-development.log"
+
+      - name: Build native AppImage and deb
+        run: npm run release:linux -- --arch ${{ matrix.arch }}
+
+      - name: Verify and run packaged AppImage and installed deb
+        run: bash scripts/verify-linux-packages.sh ${{ matrix.arch }}
+
+      - name: Upload verified Linux release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/Inkleaf-*-linux-${{ matrix.arch }}.AppImage
+            dist/Inkleaf-*-linux-${{ matrix.arch }}.AppImage.sha256
+            dist/Inkleaf-*-linux-${{ matrix.arch }}.deb
+            dist/Inkleaf-*-linux-${{ matrix.arch }}.deb.sha256
+
+      - name: Keep UI screenshots and logs for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-proof-${{ matrix.arch }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: verify/

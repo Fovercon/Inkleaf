@@ -15,7 +15,7 @@
 /* ---------- headings ---------- */
 .md-preview h1, .md-preview h2, .md-preview h3,
 .md-preview h4, .md-preview h5, .md-preview h6 {
-  font-family: 'Songti SC', 'STSong', Georgia, serif;
+  font-family: var(--font-serif);
   font-weight: 600;
   line-height: 1.45;
   margin: 1.6em 0 0.65em;
@@ -79,7 +79,7 @@
 
 /* ---------- code ---------- */
 .md-preview code {
-  font-family: 'SF Mono', Menlo, Consolas, 'PingFang SC', monospace;
+  font-family: var(--font-mono);
   font-size: 0.86em;
   background: var(--code-bg);
   padding: 0.18em 0.45em;

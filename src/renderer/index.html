@@ -30,16 +30,16 @@
   <div id="file-title"></div>
   <div id="toolbar" role="toolbar" aria-label="文件与视图工具">
     <div class="toolbar-group">
-      <button id="btn-open-folder" title="打开文件夹 (⇧⌘O)" aria-label="打开文件夹" class="tb"><svg class="icon"><use href="#i-folder"/></svg></button>
-      <button id="btn-open-file" title="打开文件 (⌘O)" aria-label="打开文件" class="tb"><svg class="icon"><use href="#i-file"/></svg></button>
-      <button id="btn-new-file" title="新建文件 (⌘N)" aria-label="新建文件" class="tb"><svg class="icon"><use href="#i-plus"/></svg></button>
+      <button id="btn-open-folder" title="打开文件夹 (⇧⌘O)" data-shortcut="CmdOrCtrl+Shift+O" aria-label="打开文件夹" class="tb"><svg class="icon"><use href="#i-folder"/></svg></button>
+      <button id="btn-open-file" title="打开文件 (⌘O)" data-shortcut="CmdOrCtrl+O" aria-label="打开文件" class="tb"><svg class="icon"><use href="#i-file"/></svg></button>
+      <button id="btn-new-file" title="新建文件 (⌘N)" data-shortcut="CmdOrCtrl+N" aria-label="新建文件" class="tb"><svg class="icon"><use href="#i-plus"/></svg></button>
     </div>
     <span class="tb-sep"></span>
     <div class="toolbar-group">
-      <button id="btn-toggle-sidebar" title="书库栏 (⌘\)" aria-label="显示书库栏" class="tb"><svg class="icon"><use href="#i-sidebar"/></svg></button>
-      <button id="btn-toggle-editor" title="编辑面板 (⌘1)" aria-label="显示编辑面板" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
-      <button id="btn-toggle-preview" title="阅读面板 (⌘2)" aria-label="显示阅读面板" class="tb"><svg class="icon"><use href="#i-book"/></svg></button>
-      <button id="btn-toggle-outline" title="大纲 (⌘3)" aria-label="显示大纲" class="tb"><svg class="icon"><use href="#i-outline"/></svg></button>
+      <button id="btn-toggle-sidebar" title="书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="显示书库栏" class="tb"><svg class="icon"><use href="#i-sidebar"/></svg></button>
+      <button id="btn-toggle-editor" title="编辑面板 (⌘1)" data-shortcut="CmdOrCtrl+1" aria-label="显示编辑面板" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
+      <button id="btn-toggle-preview" title="阅读面板 (⌘2)" data-shortcut="CmdOrCtrl+2" aria-label="显示阅读面板" class="tb"><svg class="icon"><use href="#i-book"/></svg></button>
+      <button id="btn-toggle-outline" title="大纲 (⌘3)" data-shortcut="CmdOrCtrl+3" aria-label="显示大纲" class="tb"><svg class="icon"><use href="#i-outline"/></svg></button>
     </div>
     <span class="tb-sep"></span>
     <button id="btn-theme" title="切换主题：跟随系统 / 暖白 / 羊皮纸 / 护眼绿 / 深色" aria-label="切换主题" class="tb"><svg class="icon"><use href="#i-theme"/></svg></button>
@@ -47,7 +47,7 @@
   </div>
 </header>
 <div id="workspace">
-  <button id="sidebar-expand" title="展开书库栏 (⌘\)" aria-label="展开书库栏"><svg class="icon"><use href="#i-right"/></svg></button>
+  <button id="sidebar-expand" title="展开书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="展开书库栏"><svg class="icon"><use href="#i-right"/></svg></button>
   <aside id="sidebar" aria-label="书库">
     <div class="sidebar-eyebrow">YOUR LIBRARY</div>
     <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span></div>
@@ -59,7 +59,7 @@
     <div id="file-tree"></div>
     <div id="recent-list"></div>
     <div class="sidebar-note"><span class="leaf-dot"></span>一页一页，积累所思。</div>
-    <button id="sidebar-collapse" title="收起书库栏 (⌘\)" aria-label="收起书库栏"><svg class="icon"><use href="#i-left"/></svg></button>
+    <button id="sidebar-collapse" title="收起书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="收起书库栏"><svg class="icon"><use href="#i-left"/></svg></button>
   </aside>
   <div class="resizer" id="resizer-sidebar"></div>
   <section id="editor-pane" aria-label="Markdown 编辑器"><div class="pane-heading"><span>编辑</span><small>MARKDOWN</small></div><div id="editor-host"></div></section>
@@ -84,8 +84,8 @@
     <p class="empty-tagline">让文字，安静生长。</p>
     <p class="empty-description">收藏一份灵感，展开一页思绪。<br>从你的 Markdown 文件或书库开始。</p>
     <div class="empty-actions">
-      <button id="empty-open-folder" class="primary"><svg class="icon"><use href="#i-folder"/></svg>打开书库<kbd>⇧⌘O</kbd></button>
-      <button id="empty-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件<kbd>⌘O</kbd></button>
+      <button id="empty-open-folder" class="primary"><svg class="icon"><use href="#i-folder"/></svg>打开书库<kbd data-shortcut="CmdOrCtrl+Shift+O">⇧⌘O</kbd></button>
+      <button id="empty-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件<kbd data-shortcut="CmdOrCtrl+O">⌘O</kbd></button>
     </div>
     <p class="empty-hint">也可以将文件夹或 .md 文件拖到这里</p>
     <div class="empty-rule"></div>
@@ -96,7 +96,7 @@
   <span class="status-brand"><span class="leaf-dot"></span>让文字，安静生长。</span>
   <span id="save-state" role="status" aria-live="polite"></span>
   <span id="editor-stats"></span>
-  <span class="status-shortcut">快速切换 <kbd>⌘P</kbd></span>
+  <span class="status-shortcut">快速切换 <kbd data-shortcut="CmdOrCtrl+P">⌘P</kbd></span>
 </footer>
 <script type="module" src="./renderer.js"></script>
 </body>

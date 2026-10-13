@@ -69,6 +69,7 @@
 .ink-update-secondary:hover:not(:disabled) { background: var(--hover); }
 .ink-update-link { margin-right: auto; padding: 8px 0; color: var(--text-dim); }
 .ink-update-link:hover:not(:disabled) { color: var(--accent); }
+.ink-update-manual { order: 1; }
 .ink-update-footer p { margin: 12px 0 0; color: var(--text-dim); font-size: 9px; line-height: 1.6; text-align: right; }
 .ink-update-panel button:disabled { cursor: default; opacity: .55; }
 .ink-update-panel summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }

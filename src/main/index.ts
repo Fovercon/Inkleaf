@@ -1,10 +1,11 @@
-import { app, BrowserWindow, Menu, protocol, net, shell } from 'electron'
+import { app, BrowserWindow, Menu, protocol, net, shell, ipcMain } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { registerIpc, getLibraryRoot, rebuildDockMenu } from './ipc'
 import { initializeUpdater } from './updater'
+import { markdownFromArguments } from './openPath'
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
@@ -12,6 +13,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const RENDERER_ROOT = path.join(__dirname, 'renderer')
+const readyWindows = new Set<number>()
 
 const MIME: Record<string, string> = {
   '.png': 'image/png',
@@ -35,21 +37,37 @@ const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  // macOS: .md file double-clicked in Finder / dragged onto the dock icon
-  let pendingOpenPath: string | null = null
-  app.on('open-file', (event, p) => {
-    event.preventDefault()
-    pendingOpenPath = p
+  // Linux desktop launchers pass files through argv; macOS uses open-file.
+  let pendingOpenPath = process.platform === 'darwin' ? null
+    : markdownFromArguments(process.argv.slice(app.isPackaged ? 1 : 2), process.cwd())
+  const deliverOpenPath = (p: string) => {
     const win = BrowserWindow.getAllWindows()[0]
-    if (win) {
+    pendingOpenPath = p
+    if (win && readyWindows.has(win.webContents.id)) {
       win.webContents.send('open-path', p)
+      pendingOpenPath = null
+    }
+    if (win) {
       if (win.isMinimized()) win.restore()
       win.focus()
+    }
+  }
+  ipcMain.on('app:renderer-ready', event => {
+    if (event.senderFrame !== event.sender.mainFrame || event.senderFrame?.url.split('?')[0] !== 'app://local/index.html') return
+    readyWindows.add(event.sender.id)
+    if (pendingOpenPath) {
+      event.sender.send('open-path', pendingOpenPath)
       pendingOpenPath = null
     }
   })
+  app.on('open-file', (event, p) => {
+    event.preventDefault()
+    deliverOpenPath(p)
+  })
 
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    const p = markdownFromArguments(argv.slice(app.isPackaged ? 1 : 2), workingDirectory)
+    if (p) { deliverOpenPath(p); return }
     const win = BrowserWindow.getAllWindows()[0]
     if (win) {
       if (win.isMinimized()) win.restore()
@@ -93,15 +111,6 @@ if (!gotLock) {
     createWindow()
     if (app.dock) void rebuildDockMenu()
 
-    // a file was passed at launch (e.g. double-clicked before the app was running)
-    if (pendingOpenPath) {
-      const p = pendingOpenPath
-      pendingOpenPath = null
-      setTimeout(() => {
-        BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('open-path', p))
-      }, 800)
-    }
-
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
     })
@@ -123,18 +132,21 @@ async function createWindow() {
     height: 880,
     minWidth: 780,
     minHeight: 540,
-    titleBarStyle: 'hiddenInset',
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 18, y: 23 } }
+      : { icon: path.join(__dirname, 'icon.png') }),
     title: '墨页 · Inkleaf',
     backgroundColor: '#fbf9f4',
-    trafficLightPosition: { x: 18, y: 23 },
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   })
+  win.webContents.on('did-start-loading', () => readyWindows.delete(win.webContents.id))
+  win.webContents.once('destroyed', () => readyWindows.delete(win.webContents.id))
   win.once('ready-to-show', () => win.show())
   win.webContents.on('console-message', (_e, _level, message) => {
     console.log('[renderer]', message)
@@ -157,6 +169,19 @@ async function createWindow() {
     setTimeout(async () => {
       let failed = false
       try {
+        const expectedPlatform = process.platform
+        const expectedShortcut = process.platform === 'darwin' ? '⌘O' : 'Ctrl+O'
+        const platformOk = await win.webContents.executeJavaScript(`(() => {
+          return window.mdr.platform === ${JSON.stringify(expectedPlatform)}
+            && document.body.dataset.platform === ${JSON.stringify(expectedPlatform)}
+            && window.mdr.sandboxed === true
+            && typeof window.mdr.readFile === 'function'
+            && document.getElementById('btn-open-file').title.includes(${JSON.stringify(expectedShortcut)});
+        })()`)
+        if (!platformOk || !readyWindows.has(win.webContents.id)) {
+          throw new Error('Platform shortcuts, isolated preload or sandbox startup failed')
+        }
+        console.log(`[platform-check] ${expectedPlatform} shortcuts, preload and sandbox OK`)
         const dir = path.join(process.cwd(), 'verify')
         fs.mkdirSync(dir, { recursive: true })
         await win.webContents.executeJavaScript(`document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: {theme: 'light'}}))`)
@@ -507,7 +532,7 @@ function buildMenu() {
     BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('menu', action))
 
   const template: Electron.MenuItemConstructorOptions[] = [
-    { role: 'appMenu', submenu: [
+    process.platform === 'darwin' ? { role: 'appMenu', submenu: [
       { role: 'about' },
       { label: '检查更新…', click: () => send('check-updates') },
       { type: 'separator' },
@@ -515,6 +540,11 @@ function buildMenu() {
       { type: 'separator' },
       { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
       { type: 'separator' }, { role: 'quit' },
+    ] } : { label: 'Inkleaf', submenu: [
+      { role: 'about', label: '关于墨页 · Inkleaf' },
+      { label: '检查更新…', click: () => send('check-updates') },
+      { type: 'separator' },
+      { role: 'quit', label: '退出' },
     ] },
     {
       role: 'fileMenu',

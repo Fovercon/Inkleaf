@@ -75,6 +75,7 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
   const progressEl = panel.querySelector<HTMLElement>('.ink-update-progress')!
   const progressBar = progressEl.querySelector<HTMLProgressElement>('progress')!
   const progressLabel = progressEl.querySelector<HTMLElement>('span')!
+  const footerNote = panel.querySelector<HTMLElement>('.ink-update-footer p')!
 
   const notice = document.createElement('aside')
   notice.className = 'ink-update-notice'
@@ -99,8 +100,9 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
   let disposed = false
   const dismissedNotices = new Set<string>()
 
+  const manualInstall = () => state.installationKind === 'deb'
   const noticeKey = () => `${state.version ?? ''}:${state.status}`
-  const locked = () => saving || pending === 'install' || state.status === 'installing'
+  const locked = () => !manualInstall() && (saving || pending === 'install' || state.status === 'installing')
   const focusable = () => [...panel.querySelectorAll<HTMLElement>('button:not(:disabled), summary, [tabindex="0"]')]
     .filter((el) => !el.hidden && !el.closest('[hidden]') && el.getClientRects().length > 0)
 
@@ -117,17 +119,20 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
   const render = () => {
     if (disposed) return
     const { status } = state
+    const manual = manualInstall()
     const version = limited(state.version, 50)
     const current = limited(state.currentVersion, 50)
     versionEl.textContent = current ? `当前版本 ${current}` : '墨页 · Inkleaf'
     let heading = '保持墨页常新'
-    let description = '新版本准备好时，墨页会提醒你。'
+    let description = manual ? '墨页会检查新版本。新版 deb 需要使用系统包管理器安装。' : '新版本准备好时，墨页会提醒你。'
     if (status === 'checking' || pending === 'check') {
       heading = '正在检查更新'
       description = '稍等片刻，正在查找新版本。'
     } else if (status === 'available') {
       heading = '新的一页，已经准备好'
-      description = `发现 Inkleaf ${version}。现在下载，或继续写作，稍后再更新。`
+      description = manual
+        ? `发现 Inkleaf ${version}。请在版本发布页下载新版 deb，并使用系统包管理器安装。`
+        : `发现 Inkleaf ${version}。现在下载，或继续写作，稍后再更新。`
     } else if (status === 'downloading' || pending === 'download') {
       heading = '正在下载新版本'
       description = '关闭此窗口后，下载仍会继续。'
@@ -141,11 +146,15 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
       heading = '已经是最新版本'
       description = current ? `你正在使用 Inkleaf ${current}。` : '你正在使用最新版本的墨页。'
     } else if (status === 'error') {
-      heading = '暂时无法完成更新'
+      heading = manual ? '暂时无法检查新版本' : '暂时无法完成更新'
       description = limited(state.message) || '请检查网络连接后重试。'
     } else if (status === 'unsupported') {
       heading = '当前版本暂不支持自动更新'
       description = limited(state.message) || '请从版本发布页下载并安装新版墨页。'
+    }
+    if (manual && ['downloading', 'ready', 'installing'].includes(status)) {
+      heading = '请使用系统包管理器更新'
+      description = `Inkleaf ${version} 的 deb 需要手动安装。请从版本发布页下载安装包，再使用系统包管理器更新。`
     }
     // Saving precedes the authoritative installing event while ready stays intact.
     if (saving) {
@@ -155,9 +164,10 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
     if (headingEl.textContent !== heading) headingEl.textContent = heading
     if (descriptionEl.textContent !== description) descriptionEl.textContent = description
     panel.dataset.status = saving ? 'saving' : status
-    panel.setAttribute('aria-busy', String(saving || status === 'installing'))
+    panel.dataset.installationKind = state.installationKind ?? ''
+    panel.setAttribute('aria-busy', String(!manual && (saving || status === 'installing')))
 
-    progressEl.hidden = status !== 'downloading'
+    progressEl.hidden = manual || status !== 'downloading'
     const progress = state.progress
     if (typeof progress === 'number' && Number.isFinite(progress)) {
       const percent = Math.min(100, Math.max(0, progress))
@@ -167,7 +177,7 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
       progressBar.removeAttribute('value')
       progressLabel.textContent = '准备下载…'
     }
-    const installError = status === 'ready' && state.message?.startsWith('安装未开始') ? limited(state.message) : ''
+    const installError = !manual && status === 'ready' && state.message?.startsWith('安装未开始') ? limited(state.message) : ''
     const visibleError = localError || installError
     errorEl.hidden = !visibleError
     errorEl.textContent = visibleError
@@ -176,15 +186,17 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
     // Release notes are remote content and must remain plain text.
     if (notesContent.textContent !== notes) notesContent.textContent = notes
     releaseButton.hidden = !safeReleaseUrl(state.releaseUrl)
+    releaseButton.textContent = manual ? '查看安装包' : '查看版本详情'
+    releaseButton.className = manual ? 'ink-update-button ink-update-primary ink-update-manual' : 'ink-update-button ink-update-link'
     checkButton.hidden = !['idle', 'up-to-date', 'error'].includes(status)
     checkButton.textContent = status === 'error' ? '重试检查' : '检查更新'
-    downloadButton.hidden = status !== 'available' && !(status === 'error' && !!state.version)
+    downloadButton.hidden = manual || (status !== 'available' && !(status === 'error' && !!state.version))
     downloadButton.textContent = status === 'error' ? '重新下载' : '下载更新'
-    installButton.hidden = status !== 'ready' && status !== 'installing'
+    installButton.hidden = manual || (status !== 'ready' && status !== 'installing')
     installButton.textContent = saving ? '正在保存…' : status === 'installing' ? '正在安装…' : '保存并重启安装'
-    cancelButton.hidden = status !== 'downloading'
+    cancelButton.hidden = manual || status !== 'downloading'
     cancelButton.textContent = cancelPending ? '正在取消…' : '取消下载'
-    dismissButton.textContent = ['available', 'ready'].includes(status) ? '稍后' : status === 'downloading' ? '后台下载' : '关闭'
+    dismissButton.textContent = ['available', 'ready'].includes(status) ? '稍后' : !manual && status === 'downloading' ? '后台下载' : '关闭'
     closeButton.disabled = locked()
     dismissButton.disabled = locked()
     releaseButton.disabled = locked()
@@ -200,7 +212,8 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
       trigger.title = actionable ? '新版本已准备好，查看更新' : '检查更新'
     }
     notice.hidden = !overlay.hidden || !actionable || dismissedNotices.has(noticeKey())
-    noticeText.textContent = status === 'ready' ? `Inkleaf ${version} 已准备就绪` : `Inkleaf ${version} 可以更新了`
+    noticeText.textContent = manual ? `Inkleaf ${version} 新版安装包已发布` : status === 'ready' ? `Inkleaf ${version} 已准备就绪` : `Inkleaf ${version} 可以更新了`
+    footerNote.textContent = manual ? '新版 deb 需通过系统包管理器安装。' : '发现新版本时会提醒你，下载和安装由你决定。'
   }
 
   const receive = (next: UpdateState) => {
@@ -212,6 +225,7 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
 
   const run = async (action: UpdateAction) => {
     if (pending || locked()) return
+    if (manualInstall() && action !== 'check') return
     if (action === 'check' && ['checking', 'downloading', 'ready', 'installing'].includes(state.status)) return
     if (action === 'download' && state.status !== 'available' && !(state.status === 'error' && state.version)) return
     if (action === 'install' && state.status !== 'ready') return
@@ -292,7 +306,7 @@ export function setupUpdater(beforeInstall: () => Promise<void>): () => void {
   downloadButton.addEventListener('click', () => { void run('download') })
   installButton.addEventListener('click', () => { void run('install') })
   cancelButton.addEventListener('click', () => {
-    if (cancelPending || locked() || state.status !== 'downloading') return
+    if (manualInstall() || cancelPending || locked() || state.status !== 'downloading') return
     cancelPending = true
     localError = ''
     render()

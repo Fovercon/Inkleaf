@@ -1,4 +1,5 @@
 import { getState, saveState, runtime } from './state'
+import { revealInFileManagerLabel } from './platform'
 
 export interface TreeNode {
   name: string
@@ -395,7 +396,7 @@ export class FileTree {
       menu.appendChild(this.menuSep())
     }
     addItem('重命名', () => this.startRename(n.path))
-    addItem('在 Finder 中显示', () => window.mdr.reveal(n.path))
+    addItem(revealInFileManagerLabel(), () => window.mdr.reveal(n.path))
     // keep rename and delete separated to avoid Obsidian-style mis-clicks
     menu.appendChild(this.menuSep())
     addItem('删除…', () => void this.applyDelete(n), true)

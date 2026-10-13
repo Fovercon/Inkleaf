@@ -84,7 +84,10 @@ html, body {
   overflow: hidden;
 }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', sans-serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Noto Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-serif: 'Songti SC', 'STSong', Georgia, 'Noto Serif CJK SC', 'Source Han Serif SC', 'Noto Serif', serif;
+  --font-mono: 'SF Mono', Menlo, Consolas, 'PingFang SC', 'Liberation Mono', 'DejaVu Sans Mono', 'Noto Sans Mono CJK SC', monospace;
+  font-family: var(--font-ui);
   font-size: 14px;
   color: var(--text);
   background: var(--bg);
@@ -92,6 +95,11 @@ body {
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
   --shadow: 0 12px 40px rgba(30, 43, 28, 0.09);
+}
+body[data-platform='linux'] {
+  --font-ui: 'Inter', 'Noto Sans', Ubuntu, Cantarell, 'Noto Sans CJK SC', 'Source Han Sans SC', 'WenQuanYi Micro Hei', system-ui, sans-serif;
+  --font-serif: 'Noto Serif CJK SC', 'Source Han Serif SC', 'Noto Serif', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Noto Sans Mono', 'Liberation Mono', 'DejaVu Sans Mono', 'Noto Sans Mono CJK SC', 'WenQuanYi Micro Hei', monospace;
 }
 button {
   font-family: inherit;
@@ -117,6 +125,11 @@ button {
   -webkit-app-region: drag;
   -webkit-user-select: none;
   z-index: 10;
+}
+/* Linux uses the desktop's native title bar and window controls. */
+body[data-platform='linux'] #titlebar {
+  padding-left: 18px;
+  -webkit-app-region: no-drag;
 }
 #toolbar {
   display: flex;
@@ -467,7 +480,7 @@ button {
 #editor-host .cm-editor { height: 100%; }
 #editor-host .cm-editor.cm-focused { outline: none; }
 #editor-host .cm-scroller {
-  font-family: 'SF Mono', Menlo, Consolas, 'PingFang SC', monospace;
+  font-family: var(--font-mono);
   font-size: calc(13.5px * var(--font-scale, 1));
   line-height: 1.65;
 }
@@ -587,7 +600,7 @@ button {
   transform: rotate(-6deg);
 }
 .empty-card h1 {
-  font-family: 'Songti SC', 'STSong', Georgia, serif;
+  font-family: var(--font-serif);
   font-size: 48px;
   margin: 18px 0 16px;
   color: var(--text);
@@ -792,8 +805,8 @@ button {
 .icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .app-brand { display: flex; align-items: center; gap: 7px; flex: none; padding-right: 22px; border-right: 1px solid var(--border); }
 .brand-mark { width: 31px; height: 36px; color: var(--accent); }
-.app-brand > span { font-family: 'Songti SC', 'STSong', serif; font-size: 18px; letter-spacing: .12em; }
-.app-brand small { display: block; font-family: -apple-system, sans-serif; font-size: 7px; font-weight: 600; letter-spacing: .24em; color: var(--text-dim); margin-top: 2px; }
+.app-brand > span { font-family: var(--font-serif); font-size: 18px; letter-spacing: .12em; }
+.app-brand small { display: block; font-family: var(--font-ui); font-size: 7px; font-weight: 600; letter-spacing: .24em; color: var(--text-dim); margin-top: 2px; }
 .toolbar-group { display: flex; gap: 3px; }
 .tb { width: 32px; height: 32px; transition: background .16s, color .16s; }
 .tb[aria-pressed='true'] { color: var(--accent); }
@@ -821,7 +834,7 @@ kbd { font-family: inherit; font-size: 10px; font-weight: 400; opacity: .7; }
 .empty-icon svg { width: 62px; height: 62px; }
 .empty-eyebrow { font-size: 9px; font-weight: 600; letter-spacing: .22em; color: var(--accent); }
 .empty-card h1 span { display: block; margin-top: 8px; font-family: Georgia, serif; font-size: 21px; font-weight: 400; letter-spacing: .06em; color: var(--text-dim); }
-.empty-card .empty-tagline { font-family: 'Songti SC', 'STSong', serif; font-size: 19px; color: var(--text); letter-spacing: .1em; margin-bottom: 14px; }
+.empty-card .empty-tagline { font-family: var(--font-serif); font-size: 19px; color: var(--text); letter-spacing: .1em; margin-bottom: 14px; }
 .empty-card .empty-description { font-size: 12px; line-height: 1.9; }
 .empty-actions button { transition: transform .16s, background .16s; }
 .empty-actions button:hover { transform: translateY(-1px); }

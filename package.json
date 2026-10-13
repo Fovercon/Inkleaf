@@ -1,9 +1,10 @@
 {
   "name": "inkleaf",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "墨页 · Inkleaf — a quiet place to read and write Markdown",
   "main": "out/main.js",
   "author": "wangyuan",
+  "homepage": "https://github.com/Fovercon/Inkleaf",
   "license": "UNLICENSED",
   "private": true,
   "scripts": {
@@ -13,8 +14,10 @@
     "test:ui": "node esbuild.mjs && MDR_TEST=1 electron .",
     "package": "node scripts/make-icon.mjs && node esbuild.mjs && electron-builder --mac dir --arm64",
     "release:build": "node scripts/make-release.mjs",
+    "release:linux": "node scripts/make-linux-release.mjs",
     "icon": "node scripts/make-icon.mjs",
-    "test:updates": "node scripts/test-updater.mjs"
+    "test:updates": "node scripts/test-updater.mjs",
+    "test:platform": "node scripts/test-platform.mjs"
   },
   "build": {
     "appId": "com.fovercon.inkleaf",
@@ -39,6 +42,28 @@
         "role": "Viewer"
       }
     ],
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "build/inkleaf-icon.png",
+      "executableName": "inkleaf",
+      "category": "Office",
+      "maintainer": "Fovercon <fovercon@users.noreply.github.com>",
+      "artifactName": "Inkleaf-${version}-linux-${arch}.${ext}",
+      "mimeTypes": ["text/markdown", "text/x-markdown"],
+      "desktop": {
+        "Name": "墨页 · Inkleaf",
+        "Comment": "A quiet place to read and write Markdown",
+        "StartupWMClass": "Inkleaf"
+      }
+    },
+    "appImage": {
+      "executableArgs": ["--ozone-platform-hint=auto"]
+    },
+    "deb": {
+      "afterInstall": "scripts/linux-after-install.sh",
+      "afterRemove": "scripts/linux-after-remove.sh",
+      "depends": ["libgtk-3-0", "libnss3", "libxss1", "libxtst6", "libatspi2.0-0", "libuuid1", "libgbm1", "libasound2 | libasound2t64", "xdg-utils"]
+    },
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
