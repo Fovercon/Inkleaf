@@ -16,6 +16,8 @@ export interface PanelDef {
   min: number
   max: number
   defaultWidth: number
+  /** 与另一面板共享宽度（右栏堆叠面板）：不设自身宽度，随容器铺满 */
+  sharesWidth?: string
   /** 面板特有的布局副作用（如 sidebar 的边缘把手） */
   onLayout?: (collapsed: boolean) => void
 }
@@ -40,7 +42,10 @@ export function attachPanelResizers(
   writeWidth: (id: string, w: number) => void,
   onEnd: () => void,
 ) {
+  const wired = new Set<HTMLElement>()
   for (const p of panels.values()) {
+    if (wired.has(p.resizer)) continue // 多面板共享同一 resizer 时只挂一次
+    wired.add(p.resizer)
     p.resizer.addEventListener('pointerdown', (e) => {
       e.preventDefault()
       const startX = e.clientX

@@ -110,7 +110,7 @@ registerPostProcessor((container) => {
         activeCard = card
         // the card disappears on mouseleave or after a while (re-renders don't fire mouseleave)
         setTimeout(() => activeCard === card && dismissCard(), 6000)
-      }, 220)
+      }, 150)
     })
     a.addEventListener('mouseleave', dismissCard)
   })

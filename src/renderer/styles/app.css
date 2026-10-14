@@ -200,7 +200,7 @@ body[data-platform='linux'] #titlebar {
   overflow: hidden;
 }
 #sidebar { border-right: 1px solid var(--border); }
-#outline-pane { border-left: 1px solid var(--border); }
+#right-panes { border-left: 1px solid var(--border); }
 
 .pane-header {
   flex: none;
@@ -871,3 +871,42 @@ body.focus-mode .md-preview > .focus-active { opacity: 1; }
 body.focus-mode .cm-scroller .cm-line { opacity: 0.45; transition: opacity 0.2s ease; }
 body.focus-mode .cm-scroller .cm-activeLine { opacity: 1; }
 body.typewriter-mode .cm-scroller { scroll-behavior: smooth; }
+
+/* ---------- right pane stack (outline + backlinks) ---------- */
+#right-panes {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+#right-panes > aside {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  overflow: hidden;
+}
+#right-panes > aside + aside { border-top: 1px solid var(--border); }
+#backlink-list {
+  flex: 1;
+  overflow: auto;
+  padding: 2px 8px 16px;
+  min-height: 0;
+}
+.backlink-item {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.backlink-item:hover { background: var(--hover); color: var(--accent); }
+.backlink-item .bl-file { overflow: hidden; text-overflow: ellipsis; }
+.backlink-item .bl-line { font-size: 10.5px; opacity: 0.7; font-variant-numeric: tabular-nums; }

@@ -17,6 +17,7 @@ import { setupPlatformUi } from './platform'
 import { registerCommand, runCommand } from './commands'
 import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
 import { setWikilinkNav } from './wikilink'
+import { setBacklinkNav, refreshBacklinks } from './backlink'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
@@ -89,6 +90,10 @@ function registerBuiltinPanels() {
     id: 'outline', slot: 'right', el: outlinePane, resizer: $('#resizer-outline'),
     min: 160, max: 420, defaultWidth: 184,
   })
+  registerPanel({
+    id: 'backlink', slot: 'right', el: $('#backlink-pane'), resizer: $('#resizer-outline'),
+    min: 160, max: 420, defaultWidth: 184, sharesWidth: 'outline',
+  })
 }
 
 function applyLayout() {
@@ -106,8 +111,8 @@ function applyLayout() {
   for (const p of listPanels()) {
     const c = collapsed(p.id)
     p.el.classList.toggle('pane-collapsed', c)
-    p.el.style.width = c ? '' : `${Math.round(panelWidth(p) * scale)}px`
-    p.resizer.classList.toggle('pane-collapsed', c)
+    // sharesWidth 面板（右栏堆叠）不设自身宽度，随容器铺满
+    if (!p.sharesWidth) p.el.style.width = c ? '' : `${Math.round(panelWidth(p) * scale)}px`
     p.onLayout?.(c)
     $(`#btn-toggle-${p.id}`)?.setAttribute('aria-pressed', String(!c))
   }
@@ -203,6 +208,7 @@ async function openFile(path: string, opts?: { line?: number }): Promise<boolean
     saveState()
     if (s.sidebarTab === 'recent') renderRecent()
     updateBreadcrumb()
+    void refreshBacklinks(runtime.currentFile)
     applyLayout()
     return true
   } finally {
@@ -224,6 +230,7 @@ function closeFile() {
   document.title = '墨页 · Inkleaf'
   saveStateEl.textContent = ''
   updateBreadcrumb()
+  void refreshBacklinks(null)
   applyLayout()
 }
 
@@ -457,6 +464,7 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'toggle-editor', title: '切换编辑面板', run: () => togglePane('editor') })
   registerCommand({ id: 'toggle-preview', title: '切换预览面板', run: () => togglePane('preview') })
   registerCommand({ id: 'toggle-outline', title: '切换大纲', run: () => togglePane('outline') })
+  registerCommand({ id: 'toggle-backlink', title: '切换反向链接', run: () => togglePane('backlink' as PaneKey) })
   // 主题与字号
   registerCommand({ id: 'theme-light', title: '浅色主题', run: () => setTheme('light') })
   registerCommand({ id: 'theme-sepia', title: '羊皮纸主题', run: () => setTheme('sepia') })
@@ -634,6 +642,7 @@ async function boot() {
   setWikilinkNav((p, anchor) => {
     void openFile(p, anchor ? { line: findHeadingLine(p, anchor) } : undefined)
   })
+  setBacklinkNav((p, opts) => void openFile(p, opts))
   setupLightbox(preview)
 
   $('#tab-files').addEventListener('click', () => setSidebarTab('files'))

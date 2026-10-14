@@ -589,8 +589,11 @@ async function createWindow() {
                 await new Promise(r => setTimeout(r, 1200));
                 const target = document.querySelector('#preview a[data-wikilink]');
                 if (target) {
+                  for (let i = 0; i < 20 && !target.dataset.wikilinkPath; i++) {
+                    await new Promise(r => setTimeout(r, 60));
+                  }
                   target.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
-                  await new Promise(r => setTimeout(r, 900));
+                  await new Promise(r => setTimeout(r, 1200));
                   hovered = !!document.querySelector('.wikilink-card');
                   document.querySelector('.wikilink-card')?.remove();
                 }
@@ -603,6 +606,29 @@ async function createWindow() {
         `)
         const wl = JSON.parse(wikilinkCheck)
         console.log(`[wikilink-check] count=${wl.count} rendered=${wl.rendered} opened=${wl.opened} hoverCard=${wl.hovered} ${wl.rendered && wl.opened && wl.hovered ? 'OK' : 'FAIL'}`)
+        // backlink panel check: open 旅行计划 (linked from README), panel lists the reference
+        const backlinkCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              document.querySelector('.tree-row[data-path$="旅行计划.md"]')?.click();
+              await new Promise(r => setTimeout(r, 1500));
+              const pane = document.getElementById('backlink-pane');
+              const items = pane ? pane.querySelectorAll('.backlink-item') : [];
+              const firstText = items[0]?.textContent ?? '';
+              let jumped = false;
+              if (items[0]) {
+                items[0].click();
+                await new Promise(r => setTimeout(r, 1200));
+                jumped = (document.getElementById('file-title')?.textContent ?? '') === 'README.md';
+              }
+              return JSON.stringify({paneExists: !!pane, count: items.length, mentionsReadme: firstText.includes('README'), jumped});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        const bl = JSON.parse(backlinkCheck)
+        console.log(`[backlink-check] pane=${bl.paneExists} count=${bl.count} readme=${bl.mentionsReadme} jump=${bl.jumped} ${bl.paneExists && bl.count >= 1 && bl.mentionsReadme && bl.jumped ? 'OK' : 'FAIL'}`)
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -744,6 +770,7 @@ function buildMenu() {
         { label: '切换编辑面板', accelerator: 'CmdOrCtrl+1', click: () => send('toggle-editor') },
         { label: '切换预览面板', accelerator: 'CmdOrCtrl+2', click: () => send('toggle-preview') },
         { label: '切换大纲', accelerator: 'CmdOrCtrl+3', click: () => send('toggle-outline') },
+        { label: '切换反向链接', accelerator: 'CmdOrCtrl+4', click: () => send('toggle-backlink') },
         { type: 'separator' },
         { label: '暖白纸面', click: () => send('theme-light') },
         { label: '羊皮纸', click: () => send('theme-sepia') },
