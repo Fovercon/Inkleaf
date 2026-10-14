@@ -5,6 +5,8 @@
  * Keyboard: ↑/↓ navigate, Enter open, Esc close.
  */
 
+import { escapeHtml, escapeRegExp } from './util'
+
 export type PaletteMode = 'files' | 'search'
 
 export interface PaletteOpts {
@@ -18,14 +20,6 @@ export interface PaletteOpts {
 interface FuzzyResult {
   score: number
   indices: number[]
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function fuzzyMatch(text: string, query: string): FuzzyResult | null {

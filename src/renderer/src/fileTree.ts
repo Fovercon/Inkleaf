@@ -1,4 +1,5 @@
 import { getState, saveState, runtime } from './state'
+import { escapeHtml, escapeRegExp } from './util'
 import { revealInFileManagerLabel } from './platform'
 
 export interface TreeNode {
@@ -6,14 +7,6 @@ export interface TreeNode {
   path: string
   type: 'dir' | 'file'
   children?: TreeNode[]
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 type Editing =

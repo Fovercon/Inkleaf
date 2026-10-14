@@ -3,6 +3,7 @@ import '../styles/preview.css'
 import 'katex/dist/katex.min.css'
 
 import { getState, saveState, runtime, PaneKey, ThemePref } from './state'
+import { escapeHtml } from './util'
 import { applyTheme, setTheme, cycleTheme, onThemeChange, currentTheme } from './theme'
 import { FileTree } from './fileTree'
 import { EditorPane } from './editor'
@@ -21,7 +22,6 @@ import { setBacklinkNav, refreshBacklinks } from './backlink'
 import { TabManager } from './docSession'
 import { bootPlugins } from './pluginRuntime'
 import { registerCalloutPlugin } from './bundled-callout'
-import { setUnregisterHook } from './commands'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
@@ -38,10 +38,6 @@ const treeHost = $('#file-tree')
 const saveStateEl = $('#save-state')
 const emptyState = $('#empty-state')
 const fileTitle = $('#file-title')
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
-}
 
 const editor = new EditorPane()
 const tree = new FileTree(treeHost)

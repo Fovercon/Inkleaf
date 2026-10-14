@@ -5,7 +5,7 @@
  * - 故障隔离：单个插件激活失败不影响宿主与其他插件
  * 内置功能（bundled.*）与外部插件走同一 API —— 吃自己的狗粮。
  */
-import { registerCommand, runCommand as hostRunCommand } from './commands'
+import { registerCommand, unregisterCommand as hostUnregisterCommand, runCommand as hostRunCommand } from './commands'
 import {
   registerMarkdownPlugin,
   registerPostProcessor,
@@ -55,7 +55,7 @@ class InkApi {
           when: def.when,
         })
         rec.deactivators.push(() => {
-          unregisterCommand(def.id)
+          hostUnregisterCommand(def.id)
         })
       },
     }
@@ -99,19 +99,6 @@ declare global {
 
 // ---------- 注册表反注册支持（commands/pipeline 增补） ----------
 
-const commandHandlers = new Map<string, () => void | Promise<void>>()
-
-function unregisterCommand(id: string): void {
-  commandHandlers.delete(id)
-  unregisterCommandHook?.(id)
-}
-
-/** 由 commands.ts 注入的删除钩子（避免循环依赖） */
-let unregisterCommandHook: ((id: string) => void) | null = null
-export function setUnregisterCommandHook(fn: (id: string) => void): void {
-  unregisterCommandHook = fn
-}
-
 function unregisterMarkdownPlugin(fn: (md: unknown) => void): void {
   removeMarkdownPlugin(fn as never)
 }
@@ -119,8 +106,6 @@ function unregisterMarkdownPlugin(fn: (md: unknown) => void): void {
 function unregisterPostProcessor(fn: (container: HTMLElement, ctx: unknown) => void | Promise<void>): void {
   removePostProcessor(fn as never)
 }
-
-
 
 // ---------- 生命周期 ----------
 
