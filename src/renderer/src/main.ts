@@ -15,6 +15,7 @@ import { buildStandaloneHtml } from './export'
 import { setupUpdater } from './updater'
 import { setupPlatformUi } from './platform'
 import { registerCommand, runCommand } from './commands'
+import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -442,6 +443,9 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'fmt-code', title: '行内代码', run: () => editor.toggleInlineCode() })
   registerCommand({ id: 'fmt-codeblock', title: '代码块', run: () => editor.toggleCodeBlock() })
   registerCommand({ id: 'fmt-link', title: '链接', run: () => editor.insertLink() })
+  // 专注与打字机
+  registerCommand({ id: 'toggle-focus', title: '专注模式', run: () => { toggleFocusMode(); editor.setTypewriter(getState().typewriter) } })
+  registerCommand({ id: 'toggle-typewriter', title: '打字机滚动', run: () => { toggleTypewriter(); editor.setTypewriter(getState().typewriter) } })
 }
 
 function setupActions() {
@@ -578,6 +582,9 @@ async function boot() {
 
   setupActions()
   registerBuiltinCommands()
+  applyFocusModes()
+  editor.setTypewriter(getState().typewriter)
+  setupFocusHighlight(previewScroll, preview)
   setupEditorCallbacks()
   setupUpdater(() => editor.saveNow())
   setupPreviewScroll()

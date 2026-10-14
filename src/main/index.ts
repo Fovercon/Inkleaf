@@ -530,6 +530,26 @@ async function createWindow() {
         `)
         const rc = JSON.parse(renderCheck)
         console.log(`[render-check] callout=${rc.callout} title=${rc.title} warning=${rc.warning} footnote=${rc.footnote}/${rc.footnotes} deflist=${rc.deflist} ${rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist ? 'OK' : 'FAIL'}`)
+        // focus & typewriter mode check
+        const focusCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'toggle-focus'}}));
+            await new Promise(r => setTimeout(r, 400));
+            const focus = document.body.classList.contains('focus-mode');
+            document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'toggle-typewriter'}}));
+            await new Promise(r => setTimeout(r, 250));
+            const tw = document.body.classList.contains('typewriter-mode');
+            return JSON.stringify({focus, typewriter: tw});
+          })()
+        `)
+        console.log(`[focus-check] ${focusCheck}`)
+        const focusShot = await win.webContents.capturePage()
+        fs.writeFileSync(path.join(dir, `round${round}-focus.png`), focusShot.toPNG())
+        await win.webContents.executeJavaScript(`
+          document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'toggle-focus'}}));
+          document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'toggle-typewriter'}}));
+        `)
+        await new Promise((r) => setTimeout(r, 300))
         // theme & font scale verification
         await win.webContents.executeJavaScript(
           `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'sepia' })}}))`,
@@ -652,6 +672,9 @@ function buildMenu() {
         { label: '放大字号', accelerator: 'CmdOrCtrl+=', click: () => send('zoom-in') },
         { label: '缩小字号', accelerator: 'CmdOrCtrl+-', click: () => send('zoom-out') },
         { label: '重置字号', accelerator: 'CmdOrCtrl+0', click: () => send('zoom-reset') },
+        { type: 'separator' },
+        { label: '专注模式', accelerator: 'CmdOrCtrl+Shift+D', click: () => send('toggle-focus') },
+        { label: '打字机滚动', accelerator: 'CmdOrCtrl+Shift+T', click: () => send('toggle-typewriter') },
         { type: 'separator' },
         { role: 'reload', label: '重新加载' },
         { role: 'toggleDevTools', label: '开发者工具' },

@@ -159,7 +159,10 @@ export class EditorPane {
               this.onDocChanged?.()
               this.scheduleSave()
             }
-            if (u.docChanged || u.selectionSet) this.reportStats()
+            if (u.docChanged || u.selectionSet) {
+              this.reportStats()
+              if (this.typewriter) this.centerCursor()
+            }
           }),
         ],
       }),
@@ -203,6 +206,21 @@ export class EditorPane {
   /** path changed underneath us (file renamed in the tree) */
   setPath(p: string) {
     this.path = p
+  }
+
+  /** typewriter scrolling: keep the cursor vertically centered after each edit */
+  setTypewriter(on: boolean) {
+    this.typewriter = on
+    if (on) this.centerCursor()
+  }
+
+  private typewriter = false
+
+  private centerCursor() {
+    const v = this.view
+    if (!v) return
+    const pos = v.state.selection.main.head
+    v.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
   }
 
   getContent(): string {

@@ -5,6 +5,10 @@ export interface UiState {
   theme: ThemePref
   /** preview/editor base font multiplier */
   fontScale: number
+  /** dim everything except the active block */
+  focusMode: boolean
+  /** keep the cursor vertically centered while typing */
+  typewriter: boolean
   collapsed: Record<PaneKey, boolean>
   widths: { sidebar: number; editor: number; outline: number }
   expandedDirs: string[]
@@ -18,6 +22,8 @@ const KEY = 'mdr.ui.v1'
 const DEFAULTS: UiState = {
   theme: 'auto',
   fontScale: 1,
+  focusMode: false,
+  typewriter: false,
   collapsed: { sidebar: false, editor: false, preview: false, outline: false },
   widths: { sidebar: 224, editor: 400, outline: 184 },
   expandedDirs: [],
@@ -41,6 +47,8 @@ function load(): UiState {
       scrollByPath: p.scrollByPath ?? {},
       sidebarTab: p.sidebarTab === 'recent' ? 'recent' : 'files',
       fontScale: typeof p.fontScale === 'number' ? Math.min(1.6, Math.max(0.8, p.fontScale)) : 1,
+      focusMode: p.focusMode === true,
+      typewriter: p.typewriter === true,
     }
   } catch {
     return structuredClone(DEFAULTS)
