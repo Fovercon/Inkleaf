@@ -6,6 +6,131 @@ import deflistPlugin from 'markdown-it-deflist'
 import hljs from 'highlight.js/lib/common'
 import DOMPurify from 'dompurify'
 import { currentTheme, onThemeChange } from './theme'
+import {
+  registerMarkdownPlugin,
+  registerPostProcessor,
+  registerCodeBlockProcessor,
+  applyMarkdownPlugins,
+  listPostProcessors,
+  getCodeBlockProcessor,
+  type RenderContext,
+} from './pipeline'
+
+// ---------------- 内置渲染能力的管线注册（与插件同一 API） ----------------
+
+/** 语法层：KaTeX / 任务列表 / 脚注 / 定义列表 / callout / 行号与标题锚点 */
+registerMarkdownPlugin((md) => {
+  md.use(katexPlugin as never)
+  md.use(taskLists as never, { enabled: true, label: true })
+  md.use(footnotePlugin as never)
+  md.use(deflistPlugin as never)
+
+  // tag block tokens with their source line so the preview can scroll-sync with the editor
+  md.core.ruler.push('mdr_source_line', (state) => {
+    for (const t of state.tokens) {
+      if (t.map && t.nesting !== -1) {
+        t.attrSet('data-source-line', String(t.map[0] + 1))
+      }
+    }
+  })
+
+  // stable heading ids for outline jumps and #anchor links
+  md.core.ruler.push('mdr_heading_id', (state) => {
+    const used = new Set<string>()
+    for (let i = 0; i < state.tokens.length; i++) {
+      const t = state.tokens[i]
+      if (t.type !== 'heading_open') continue
+      const text = (state.tokens[i + 1]?.children ?? []).map((c) => c.content).join('')
+      const base =
+        text
+          .trim()
+          .toLowerCase()
+          .replace(/[^\p{L}\p{N}\s-]/gu, '')
+          .replace(/\s+/g, '-')
+          .slice(0, 60) || 'section'
+      let id = base
+      let n = 2
+      while (used.has(id)) id = `${base}-${n++}`
+      used.add(id)
+      t.attrSet('id', id)
+    }
+  })
+
+  // Obsidian-compatible callouts: "> [!type] Title" on the first line of a blockquote
+  const CALLOUT_RE = /^\[!(\w+)\]([+-]?)[ \t]*(.*)$/
+  const CALLOUT_LABELS: Record<string, string> = {
+    note: '📝 备注', abstract: '📋 摘要', summary: '📋 摘要', tldr: '📋 摘要',
+    info: 'ℹ️ 信息', todo: '☑️ 待办', tip: '💡 提示', hint: '💡 提示', important: '⭐ 重要',
+    success: '✅ 成功', check: '✅ 完成', done: '✅ 完成',
+    question: '❓ 问题', help: '❓ 帮助', faq: '❓ 问题',
+    warning: '⚠️ 警告', caution: '⚠️ 注意', attention: '⚠️ 注意',
+    danger: '🚨 危险', error: '🚨 错误', bug: '🐞 缺陷', example: '📌 示例', quote: '❝ 引用', cite: '❝ 引用',
+  }
+  md.core.ruler.push('mdr_callout', (state) => {
+    const tokens = state.tokens
+    for (let i = 0; i < tokens.length; i++) {
+      if (tokens[i].type !== 'blockquote_open') continue
+      if (tokens[i + 1]?.type !== 'paragraph_open') continue
+      const inline = tokens[i + 2]
+      if (inline?.type !== 'inline' || !inline.children?.length) continue
+      const first = inline.children[0]
+      if (first.type !== 'text') continue
+      const m = CALLOUT_RE.exec(first.content)
+      if (!m) continue
+      const [, kind, fold, title] = m
+      const key = kind.toLowerCase()
+      tokens[i].attrJoin('class', 'md-callout')
+      tokens[i].attrJoin('class', `md-callout-${key}`)
+      tokens[i].attrSet('data-callout-title', title || CALLOUT_LABELS[key] || kind)
+      if (fold) tokens[i].attrSet('data-callout-fold', fold)
+      // the marker line becomes the rendered title; drop it from the body
+      first.content = ''
+      if (inline.children.length === 1) inline.children.length = 0
+      inline.content = ''
+    }
+  })
+})
+
+// preview task checkbox -> editor source line write-back
+let taskToggleHandler: ((line: number, checked: boolean) => void) | null = null
+export function setTaskToggleHandler(fn: (line: number, checked: boolean) => void) {
+  taskToggleHandler = fn
+}
+
+/** DOM 后处理：图片协议重写 / 外链提示 / 任务复选框回写 */
+registerPostProcessor((container, ctx) => {
+  container.querySelectorAll('img').forEach((img) => {
+    const src = img.getAttribute('src') ?? ''
+    if (/^https?:/i.test(src)) {
+      img.loading = 'lazy'
+      img.referrerPolicy = 'no-referrer'
+      return
+    }
+    if (/^(data:|mdasset:)/i.test(src)) return
+    if (!ctx.baseDir) return
+    const clean = decodeURIComponent(src.split('?')[0].split('#')[0])
+    const abs = `${ctx.baseDir}/${clean}`.replace(/\/{2,}/g, '/').replace(/\/$/, '')
+    img.loading = 'lazy'
+    // constant host keeps the URL parser from treating the leading path segment as a host
+    img.src = 'mdasset://local' + abs.split('/').map(encodeURIComponent).join('/')
+  })
+
+  // hover tooltip with the target URL for external links
+  container.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
+    const href = a.getAttribute('href') ?? ''
+    if (/^https?:/i.test(href) && !a.title) a.title = href
+  })
+
+  container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const li = cb.closest('li') as HTMLElement | null
+      const line = Number(li?.dataset.sourceLine ?? 0)
+      if (line > 0 && taskToggleHandler) taskToggleHandler(line, cb.checked)
+    })
+  })
+})
+
+// ---------------- markdown 实例（经管线装配） ----------------
 
 const md: MarkdownIt = new MarkdownIt({
   html: true,
@@ -21,95 +146,12 @@ const md: MarkdownIt = new MarkdownIt({
     return ''
   },
 })
+applyMarkdownPlugins(md)
 
-md.use(katexPlugin as never)
-md.use(taskLists as never, { enabled: true, label: true })
-md.use(footnotePlugin as never)
-md.use(deflistPlugin as never)
+// ---------------- Mermaid：代码块处理器（懒加载 + 缓存） ----------------
 
-// Obsidian-compatible callouts: "> [!type] Title" on the first line of a blockquote
-const CALLOUT_RE = /^\[!(\w+)\]([+-]?)[ \t]*(.*)$/
-const CALLOUT_LABELS: Record<string, string> = {
-  note: '📝 备注', abstract: '📋 摘要', summary: '📋 摘要', tldr: '📋 摘要',
-  info: 'ℹ️ 信息', todo: '☑️ 待办', tip: '💡 提示', hint: '💡 提示', important: '⭐ 重要',
-  success: '✅ 成功', check: '✅ 完成', done: '✅ 完成',
-  question: '❓ 问题', help: '❓ 帮助', faq: '❓ 问题',
-  warning: '⚠️ 警告', caution: '⚠️ 注意', attention: '⚠️ 注意',
-  danger: '🚨 危险', error: '🚨 错误', bug: '🐞 缺陷', example: '📌 示例', quote: '❝ 引用', cite: '❝ 引用',
-}
-md.core.ruler.push('mdr_callout', (state) => {
-  const tokens = state.tokens
-  for (let i = 0; i < tokens.length; i++) {
-    if (tokens[i].type !== 'blockquote_open') continue
-    if (tokens[i + 1]?.type !== 'paragraph_open') continue
-    const inline = tokens[i + 2]
-    if (inline?.type !== 'inline' || !inline.children?.length) continue
-    const first = inline.children[0]
-    if (first.type !== 'text') continue
-    const m = CALLOUT_RE.exec(first.content)
-    if (!m) continue
-    const [, kind, fold, title] = m
-    const key = kind.toLowerCase()
-    tokens[i].attrJoin('class', 'md-callout')
-    tokens[i].attrJoin('class', `md-callout-${key}`)
-    tokens[i].attrSet('data-callout-title', title || CALLOUT_LABELS[key] || kind)
-    if (fold) tokens[i].attrSet('data-callout-fold', fold)
-    // the marker line becomes the rendered title; drop it from the body
-    first.content = ''
-    if (inline.children.length === 1) inline.children.length = 0
-    inline.content = ''
-  }
-})
-
-// tag block tokens with their source line so the preview can scroll-sync with the editor
-md.core.ruler.push('mdr_source_line', (state) => {
-  for (const t of state.tokens) {
-    if (t.map && t.nesting !== -1) {
-      t.attrSet('data-source-line', String(t.map[0] + 1))
-    }
-  }
-})
-
-// stable heading ids for outline jumps and #anchor links
-md.core.ruler.push('mdr_heading_id', (state) => {
-  const used = new Set<string>()
-  for (let i = 0; i < state.tokens.length; i++) {
-    const t = state.tokens[i]
-    if (t.type !== 'heading_open') continue
-    const text = (state.tokens[i + 1]?.children ?? []).map((c) => c.content).join('')
-    const base =
-      text
-        .trim()
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}\s-]/gu, '')
-        .replace(/\s+/g, '-')
-        .slice(0, 60) || 'section'
-    let id = base
-    let n = 2
-    while (used.has(id)) id = `${base}-${n++}`
-    used.add(id)
-    t.attrSet('id', id)
-  }
-})
-
-interface LastRender {
-  container: HTMLElement
-  scroller: HTMLElement
-  text: string
-  filePath: string | null
-}
-
-let last: LastRender | null = null
-let renderSeq = 0
-
-// preview task checkbox -> editor source line write-back
-let taskToggleHandler: ((line: number, checked: boolean) => void) | null = null
-export function setTaskToggleHandler(fn: (line: number, checked: boolean) => void) {
-  taskToggleHandler = fn
-}
-
-function encodeFilePath(abs: string): string {
-  return abs.split('/').map(encodeURIComponent).join('/')
+function mermaidTheme(): 'dark' | 'default' {
+  return currentTheme() === 'dark' ? 'dark' : 'default'
 }
 
 let mermaidReady: Promise<typeof import('mermaid')['default']> | null = null
@@ -136,55 +178,56 @@ function getMermaid() {
   return mermaidReady
 }
 
-function mermaidTheme(): 'dark' | 'default' {
-  return currentTheme() === 'dark' ? 'dark' : 'default'
-}
-
 // rendered-diagram cache keyed by theme+source (cleared on theme change)
 const mermaidCache = new Map<string, string>()
 
-async function renderMermaidBlocks(container: HTMLElement) {
-  const blocks = Array.from(container.querySelectorAll<HTMLElement>('pre > code.language-mermaid'))
-  if (!blocks.length) return
-  const mermaid = await getMermaid()
-  for (let i = 0; i < blocks.length; i++) {
-    const code = blocks[i]
-    const pre = code.parentElement as HTMLElement
-    const source = code.textContent ?? ''
-    const holder = document.createElement('div')
-    holder.className = 'mermaid-block'
-    if (pre.dataset.sourceLine) holder.dataset.sourceLine = pre.dataset.sourceLine
-    // reuse previously rendered diagrams — typing re-renders skip unchanged sources
-    const key = `${mermaidTheme()}\u0000${source}`
-    const cached = mermaidCache.get(key)
-    if (cached !== undefined) {
-      holder.innerHTML = cached
-      pre.replaceWith(holder)
-      continue
-    }
-    try {
-      const { svg } = await mermaid.render(`mmd-${Date.now().toString(36)}-${i}`, source)
-      // mermaid renders node labels as foreignObject HTML regardless of htmlLabels;
-      // DOMPurify's SVG profile strips that HTML (labels vanish), so the raw output is
-      // kept as-is — safety comes from securityLevel:'strict' (labels escaped by mermaid)
-      // plus the page CSP which blocks any script execution.
-      const clean = svg
-      if (mermaidCache.size > 60) mermaidCache.clear()
-      mermaidCache.set(key, clean)
-      holder.innerHTML = clean
-    } catch (err) {
-      holder.classList.add('mermaid-error')
-      const msg = document.createElement('div')
-      msg.className = 'mermaid-error-msg'
-      msg.textContent = '⚠ Mermaid 渲染失败'
-      holder.appendChild(msg)
-      const fallback = document.createElement('pre')
-      fallback.textContent = source
-      holder.appendChild(fallback)
-    }
+let mermaidSeq = 0
+registerCodeBlockProcessor('mermaid', async (pre, source) => {
+  const holder = document.createElement('div')
+  holder.className = 'mermaid-block'
+  if (pre.dataset.sourceLine) holder.dataset.sourceLine = pre.dataset.sourceLine
+  // reuse previously rendered diagrams — typing re-renders skip unchanged sources
+  const key = `${mermaidTheme()}\u0000${source}`
+  const cached = mermaidCache.get(key)
+  if (cached !== undefined) {
+    holder.innerHTML = cached
     pre.replaceWith(holder)
+    return
   }
+  try {
+    const mermaid = await getMermaid()
+    const { svg } = await mermaid.render(`mmd-${Date.now().toString(36)}-${mermaidSeq++}`, source)
+    // mermaid renders node labels as foreignObject HTML regardless of htmlLabels;
+    // DOMPurify's SVG profile strips that HTML (labels vanish), so the raw output is
+    // kept as-is — safety comes from securityLevel:'strict' (labels escaped by mermaid)
+    // plus the page CSP which blocks any script execution.
+    if (mermaidCache.size > 60) mermaidCache.clear()
+    mermaidCache.set(key, svg)
+    holder.innerHTML = svg
+  } catch {
+    holder.classList.add('mermaid-error')
+    const msg = document.createElement('div')
+    msg.className = 'mermaid-error-msg'
+    msg.textContent = '⚠ Mermaid 渲染失败'
+    holder.appendChild(msg)
+    const fallback = document.createElement('pre')
+    fallback.textContent = source
+    holder.appendChild(fallback)
+  }
+  pre.replaceWith(holder)
+})
+
+// ---------------- 渲染主流程 ----------------
+
+interface LastRender {
+  container: HTMLElement
+  scroller: HTMLElement
+  text: string
+  filePath: string | null
 }
+
+let last: LastRender | null = null
+let renderSeq = 0
 
 export async function renderPreview(scroller: HTMLElement, container: HTMLElement, text: string, filePath: string | null) {
   const seq = ++renderSeq
@@ -200,40 +243,23 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
   container.innerHTML = html
   const t3 = big ? performance.now() : 0
 
-  const baseDir = filePath ? filePath.slice(0, filePath.lastIndexOf('/')) : null
-  container.querySelectorAll('img').forEach((img) => {
-    const src = img.getAttribute('src') ?? ''
-    if (/^https?:/i.test(src)) {
-      img.loading = 'lazy'
-      img.referrerPolicy = 'no-referrer'
-      return
-    }
-    if (/^(data:|mdasset:)/i.test(src)) return
-    if (!baseDir) return
-    const clean = decodeURIComponent(src.split('?')[0].split('#')[0])
-    const abs = `${baseDir}/${clean}`.replace(/\/{2,}/g, '/').replace(/\/$/, '')
-    img.loading = 'lazy'
-    // constant host keeps the URL parser from treating the leading path segment as a host
-    img.src = 'mdasset://local' + encodeFilePath(abs)
-  })
-
-  // hover tooltip with the target URL for external links
-  container.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
-    const href = a.getAttribute('href') ?? ''
-    if (/^https?:/i.test(href) && !a.title) a.title = href
-  })
-
-  // task list checkboxes toggle the source line and write back through the editor
-  container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const li = cb.closest('li') as HTMLElement | null
-      const line = Number(li?.dataset.sourceLine ?? 0)
-      if (line > 0 && taskToggleHandler) taskToggleHandler(line, cb.checked)
-    })
-  })
-
+  const ctx: RenderContext = {
+    filePath,
+    baseDir: filePath ? filePath.slice(0, filePath.lastIndexOf('/')) : null,
+  }
+  for (const fn of listPostProcessors()) {
+    await fn(container, ctx)
+  }
   const tm0 = big ? performance.now() : 0
-  await renderMermaidBlocks(container)
+
+  // custom code-block processors (```lang with a registered handler)
+  const blocks = Array.from(container.querySelectorAll<HTMLElement>('pre > code[class*="language-"]'))
+  for (const code of blocks) {
+    const lang = [...code.classList].find((c) => c.startsWith('language-'))?.slice('language-'.length) ?? ''
+    const processor = getCodeBlockProcessor(lang)
+    if (processor) await processor(code.parentElement as HTMLElement, code.textContent ?? '', ctx)
+  }
+
   last = { container, scroller, text, filePath }
   if (big) {
     const t4 = performance.now()
@@ -247,12 +273,11 @@ onThemeChange(async () => {
   // mermaid diagrams are baked with a theme; drop the cache and re-render, keep scroll position
   mermaidCache.clear()
   if (!last) return
-  const previous = last
-  const seq = renderSeq
-  const { container, scroller, text, filePath } = previous
+  // render into the content container (#preview) — rendering into the scroller would
+  // destroy the container element itself and detach it from the document
+  const { scroller, container, text, filePath } = last
   const scroll = scroller.scrollTop
   const mermaid = await getMermaid()
-  if (last !== previous || renderSeq !== seq) return
   mermaid.initialize(mermaidInitOptions())
   await renderPreview(scroller, container, text, filePath)
   scroller.scrollTop = scroll

@@ -1,0 +1,46 @@
+/**
+ * 渲染管线钩子（docs/04 §五 · 三级钩子位）——A4 问题（渲染管线封闭）的消解点。
+ * 三级：
+ *  1. registerMarkdownPlugin：markdown-it 插件位（语法扩展/inline 规则/core 规则）
+ *  2. registerPostProcessor：DOM 后处理位（innerHTML 写入后的增强）
+ *  3. registerCodeBlockProcessor：自定义 ```lang 代码块处理器
+ * 内置能力（KaTeX/任务列表/脚注/callout/图片重写/Mermaid）全部经同一公开 API 注册——吃自己的狗粮。
+ */
+import type MarkdownIt from 'markdown-it'
+
+export interface RenderContext {
+  filePath: string | null
+  baseDir: string | null
+}
+
+export type MarkdownPluginHook = (md: MarkdownIt) => void
+export type PostProcessorHook = (container: HTMLElement, ctx: RenderContext) => void | Promise<void>
+export type CodeBlockProcessor = (pre: HTMLElement, source: string, ctx: RenderContext) => void | Promise<void>
+
+const markdownPlugins: MarkdownPluginHook[] = []
+const postProcessors: PostProcessorHook[] = []
+const codeBlockProcessors = new Map<string, CodeBlockProcessor>()
+
+export function registerMarkdownPlugin(fn: MarkdownPluginHook): void {
+  markdownPlugins.push(fn)
+}
+
+export function registerPostProcessor(fn: PostProcessorHook): void {
+  postProcessors.push(fn)
+}
+
+export function registerCodeBlockProcessor(lang: string, fn: CodeBlockProcessor): void {
+  codeBlockProcessors.set(lang.toLowerCase(), fn)
+}
+
+export function applyMarkdownPlugins(md: MarkdownIt): void {
+  for (const fn of markdownPlugins) fn(md)
+}
+
+export function listPostProcessors(): PostProcessorHook[] {
+  return [...postProcessors]
+}
+
+export function getCodeBlockProcessor(lang: string): CodeBlockProcessor | undefined {
+  return codeBlockProcessors.get(lang.toLowerCase())
+}

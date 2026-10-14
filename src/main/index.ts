@@ -518,6 +518,7 @@ async function createWindow() {
             const footnoteRef = document.querySelector('#preview .footnote-ref, #preview sup a.footnote-ref')
             const footnotes = document.querySelector('#preview .footnotes, #preview section.footnotes')
             const deflist = document.querySelector('#preview dl')
+            const mermaidBlocks = document.querySelectorAll('#preview .mermaid-block').length
             return JSON.stringify({
               callout: !!callout,
               title: callout?.getAttribute('data-callout-title') ?? null,
@@ -525,11 +526,12 @@ async function createWindow() {
               footnote: !!footnoteRef,
               footnotes: !!footnotes,
               deflist: !!deflist,
+              mermaid: mermaidBlocks,
             })
           })()
         `)
         const rc = JSON.parse(renderCheck)
-        console.log(`[render-check] callout=${rc.callout} title=${rc.title} warning=${rc.warning} footnote=${rc.footnote}/${rc.footnotes} deflist=${rc.deflist} ${rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist ? 'OK' : 'FAIL'}`)
+        console.log(`[render-check] callout=${rc.callout} title=${rc.title} warning=${rc.warning} footnote=${rc.footnote}/${rc.footnotes} deflist=${rc.deflist} mermaid=${rc.mermaid} ${rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist && rc.mermaid >= 2 ? 'OK' : 'FAIL'}`)
         // focus & typewriter mode check
         const focusCheck = await win.webContents.executeJavaScript(`
           (async () => {
