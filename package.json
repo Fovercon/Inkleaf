@@ -1,6 +1,6 @@
 {
   "name": "inkleaf",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "墨页 · Inkleaf — a quiet place to read and write Markdown",
   "main": "out/main.js",
   "author": "wangyuan",
