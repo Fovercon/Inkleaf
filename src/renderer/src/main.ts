@@ -19,6 +19,9 @@ import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight
 import { setWikilinkNav } from './wikilink'
 import { setBacklinkNav, refreshBacklinks } from './backlink'
 import { TabManager } from './docSession'
+import { bootPlugins } from './pluginRuntime'
+import { registerCalloutPlugin } from './bundled-callout'
+import { setUnregisterHook } from './commands'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
@@ -774,6 +777,9 @@ function setupDragDrop() {
 
 async function boot() {
   setupPlatformUi()
+  // 插件运行时：内置插件（含 callout 狗粮）立即激活，外部插件声明注入
+  registerCalloutPlugin()
+  void bootPlugins()
   applyTheme()
   applyFontScale(getState().fontScale)
   editor.mount(editorHost, currentTheme() === 'dark')
@@ -840,6 +846,14 @@ async function boot() {
   document.addEventListener('mdr-test-type', (e) => {
     editor.focus()
     editor.typeText(String((e as CustomEvent).detail?.text ?? ''))
+  })
+  // test hook: (re)discover external plugins
+  document.addEventListener('mdr-test-plugins-init', () => {
+    void bootPlugins()
+  })
+  // test hook: re-render the current preview (plugin enable/disable verification)
+  document.addEventListener('mdr-test-rerender', () => {
+    void renderPreview(previewScroll, preview, editor.getContent(), runtime.currentFile)
   })
 
   // Files opened from the system file manager, command line, or recent files.

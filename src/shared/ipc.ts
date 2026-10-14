@@ -64,6 +64,7 @@ export const CH = {
   indexPeek: 'index:peek',
   indexFilesByTag: 'index:filesByTag',
   indexListNames: 'index:listNames',
+  pluginsList: 'plugins:list',
   searchText: 'search:text',
   fsRead: 'fs:read',
   fsWrite: 'fs:write',

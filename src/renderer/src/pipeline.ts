@@ -18,11 +18,17 @@ export type PostProcessorHook = (container: HTMLElement, ctx: RenderContext) => 
 export type CodeBlockProcessor = (pre: HTMLElement, source: string, ctx: RenderContext) => void | Promise<void>
 
 const markdownPlugins: MarkdownPluginHook[] = []
+/** 语法层注册变更计数：宿主据此重建 markdown-it 实例 */
+let markdownRevision = 0
+export function getMarkdownRevision(): number {
+  return markdownRevision
+}
 const postProcessors: PostProcessorHook[] = []
 const codeBlockProcessors = new Map<string, CodeBlockProcessor>()
 
 export function registerMarkdownPlugin(fn: MarkdownPluginHook): void {
   markdownPlugins.push(fn)
+  markdownRevision++
 }
 
 export function registerPostProcessor(fn: PostProcessorHook): void {
@@ -31,6 +37,10 @@ export function registerPostProcessor(fn: PostProcessorHook): void {
 
 export function registerCodeBlockProcessor(lang: string, fn: CodeBlockProcessor): void {
   codeBlockProcessors.set(lang.toLowerCase(), fn)
+}
+
+export function unregisterCodeBlockProcessor(lang: string): void {
+  codeBlockProcessors.delete(lang.toLowerCase())
 }
 
 export function applyMarkdownPlugins(md: MarkdownIt): void {
@@ -43,4 +53,17 @@ export function listPostProcessors(): PostProcessorHook[] {
 
 export function getCodeBlockProcessor(lang: string): CodeBlockProcessor | undefined {
   return codeBlockProcessors.get(lang.toLowerCase())
+}
+
+export function removeMarkdownPlugin(fn: MarkdownPluginHook): void {
+  const i = markdownPlugins.indexOf(fn)
+  if (i >= 0) {
+    markdownPlugins.splice(i, 1)
+    markdownRevision++
+  }
+}
+
+export function removePostProcessor(fn: PostProcessorHook): void {
+  const i = postProcessors.indexOf(fn)
+  if (i >= 0) postProcessors.splice(i, 1)
 }

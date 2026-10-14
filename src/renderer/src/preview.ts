@@ -7,6 +7,7 @@ import hljs from 'highlight.js/lib/common'
 import DOMPurify from 'dompurify'
 import { currentTheme, onThemeChange } from './theme'
 import {
+  getMarkdownRevision,
   registerMarkdownPlugin,
   registerPostProcessor,
   registerCodeBlockProcessor,
@@ -55,40 +56,6 @@ registerMarkdownPlugin((md) => {
       t.attrSet('id', id)
     }
   })
-
-  // Obsidian-compatible callouts: "> [!type] Title" on the first line of a blockquote
-  const CALLOUT_RE = /^\[!(\w+)\]([+-]?)[ \t]*(.*)$/
-  const CALLOUT_LABELS: Record<string, string> = {
-    note: '📝 备注', abstract: '📋 摘要', summary: '📋 摘要', tldr: '📋 摘要',
-    info: 'ℹ️ 信息', todo: '☑️ 待办', tip: '💡 提示', hint: '💡 提示', important: '⭐ 重要',
-    success: '✅ 成功', check: '✅ 完成', done: '✅ 完成',
-    question: '❓ 问题', help: '❓ 帮助', faq: '❓ 问题',
-    warning: '⚠️ 警告', caution: '⚠️ 注意', attention: '⚠️ 注意',
-    danger: '🚨 危险', error: '🚨 错误', bug: '🐞 缺陷', example: '📌 示例', quote: '❝ 引用', cite: '❝ 引用',
-  }
-  md.core.ruler.push('mdr_callout', (state) => {
-    const tokens = state.tokens
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type !== 'blockquote_open') continue
-      if (tokens[i + 1]?.type !== 'paragraph_open') continue
-      const inline = tokens[i + 2]
-      if (inline?.type !== 'inline' || !inline.children?.length) continue
-      const first = inline.children[0]
-      if (first.type !== 'text') continue
-      const m = CALLOUT_RE.exec(first.content)
-      if (!m) continue
-      const [, kind, fold, title] = m
-      const key = kind.toLowerCase()
-      tokens[i].attrJoin('class', 'md-callout')
-      tokens[i].attrJoin('class', `md-callout-${key}`)
-      tokens[i].attrSet('data-callout-title', title || CALLOUT_LABELS[key] || kind)
-      if (fold) tokens[i].attrSet('data-callout-fold', fold)
-      // the marker line becomes the rendered title; drop it from the body
-      first.content = ''
-      if (inline.children.length === 1) inline.children.length = 0
-      inline.content = ''
-    }
-  })
 })
 
 // preview task checkbox -> editor source line write-back
@@ -132,7 +99,7 @@ registerPostProcessor((container, ctx) => {
 
 // ---------------- markdown 实例（经管线装配） ----------------
 
-const md: MarkdownIt = new MarkdownIt({
+let md: MarkdownIt = new MarkdownIt({
   html: true,
   linkify: true,
   highlight(code, lang) {
@@ -146,11 +113,25 @@ const md: MarkdownIt = new MarkdownIt({
     return ''
   },
 })
-// 装配延迟到首次渲染：保证晚于 wikilink 等功能模块的插件注册（import 顺序解耦）
-let pipelineApplied = false
+// 装配延迟到首次渲染；插件注册变更（含反注册）时按版本号重建实例
+let appliedRevision = -1
 function ensurePipeline() {
-  if (pipelineApplied) return
-  pipelineApplied = true
+  if (appliedRevision === getMarkdownRevision()) return
+  appliedRevision = getMarkdownRevision()
+  md = new MarkdownIt({
+    html: true,
+    linkify: true,
+    highlight(code: string, lang: string) {
+      if (lang && lang !== 'mermaid' && hljs.getLanguage(lang)) {
+        try {
+          return hljs.highlight(code, { language: lang, ignoreIllegals: true }).value
+        } catch {
+          /* fall through to escaped output */
+        }
+      }
+      return ''
+    },
+  })
   applyMarkdownPlugins(md)
 }
 

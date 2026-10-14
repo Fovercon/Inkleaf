@@ -33,6 +33,7 @@ const api = {
   indexPeek: (p: string): Promise<{ title: string; excerpt: string } | null> => ipcRenderer.invoke(CH.indexPeek, p),
   indexFilesByTag: (tag: string): Promise<string[]> => ipcRenderer.invoke(CH.indexFilesByTag, tag),
   indexListNames: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke(CH.indexListNames),
+  pluginsList: (): Promise<{ id: string; name: string; version: string; mainUrl: string; manifest: Record<string, unknown> }[]> => ipcRenderer.invoke(CH.pluginsList),
   readFile: (p: string): Promise<string> => ipcRenderer.invoke(CH.fsRead, p),
   writeFile: (p: string, content: string): Promise<void> => ipcRenderer.invoke(CH.fsWrite, p, content),
   writeBinary: (p: string, base64: string): Promise<void> => ipcRenderer.invoke(CH.fsWriteBinary, p, base64),

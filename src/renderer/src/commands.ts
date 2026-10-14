@@ -15,11 +15,21 @@ export interface CommandDef {
 
 const commands = new Map<string, CommandDef>()
 
+/** 插件运行时注入：命令反注册（deactivate 回收） */
+let unregisterHook: ((id: string) => void) | null = null
+export function setUnregisterHook(fn: (id: string) => void): void {
+  unregisterHook = fn
+}
+
 export function registerCommand(def: CommandDef): void {
   if (commands.has(def.id)) {
     console.warn(`[commands] 重复注册命令: ${def.id}，后注册者生效`)
   }
   commands.set(def.id, def)
+}
+
+export function unregisterCommand(id: string): void {
+  commands.delete(id)
 }
 
 /** 执行命令；返回是否被识别（未注册返回 false 由调用方兜底） */

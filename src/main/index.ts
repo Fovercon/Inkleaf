@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
 import { registerIpc, getLibraryRoot, rebuildDockMenu, stopWatch } from './ipc'
+import { registerPluginIpc, pluginsRoot } from './plugins-host'
 import { initializeUpdater } from './updater'
 import { markdownFromArguments } from './openPath'
 import { appImageTarget } from './linuxAppImage'
@@ -125,7 +126,19 @@ if (!gotLock) {
       }
     })
 
+    // 插件目录服务：inkplug://<dir>/<file> -> userData/plugins/<dir>/<file>
+    protocol.handle('inkplug', (request) => {
+      const u = new URL(request.url)
+      // host 段即插件目录名：inkplug://<dir>/<file>
+      const rel = decodeURIComponent(u.host) + u.pathname
+      const base = pluginsRoot()
+      const abs = path.resolve(base, rel)
+      if (!abs.startsWith(base + path.sep)) return new Response('forbidden', { status: 403 })
+      return net.fetch(pathToFileURL(abs).toString())
+    })
     registerIpc()
+    registerPluginIpc()
+    if (process.env.MDR_TEST) void writeSamplePlugin()
     initializeUpdater()
     buildMenu()
     createWindow()
@@ -714,6 +727,45 @@ async function createWindow() {
         const cc = JSON.parse(completionCheck)
         const ccOk = cc.tooltip && (cc.options || []).some((o: string) => o.includes('旅行计划'))
         console.log(`[completion-check] tooltip=${cc.tooltip} options=${JSON.stringify(cc.options)} ${ccOk ? 'OK' : 'FAIL'}`)
+        // plugin runtime check: sample plugin loads, contributes a command, runs; callout dogfood disable/enable
+        const pluginCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              document.dispatchEvent(new CustomEvent('mdr-test-plugins-init'));
+              await new Promise(r => setTimeout(r, 1200));
+              const runtimeReady = !!window.ink;
+              const listed = runtimeReady ? await window.mdr.pluginsList() : [];
+              const hello = (listed || []).find(p => p.id === 'hello-inkleaf');
+              let activated = false, ran = false;
+              if (hello) {
+                activated = await window.ink.activate('hello-inkleaf');
+                document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'hello.hello'}}));
+                await new Promise(r => setTimeout(r, 600));
+                ran = !!document.getElementById('ink-hello-marker');
+              }
+              // dogfood: disable the internal callout plugin, re-render, callout must disappear
+              let disableWorks = false, reenableWorks = false;
+              if (runtimeReady) {
+                window.ink.disable('bundled.callout');
+                await new Promise(r => setTimeout(r, 400));
+                document.dispatchEvent(new CustomEvent('mdr-test-rerender'));
+                await new Promise(r => setTimeout(r, 900));
+                disableWorks = document.querySelectorAll('#preview blockquote.md-callout').length === 0;
+                window.ink.enable('bundled.callout');
+                await new Promise(r => setTimeout(r, 400));
+                document.dispatchEvent(new CustomEvent('mdr-test-rerender'));
+                await new Promise(r => setTimeout(r, 900));
+                reenableWorks = document.querySelectorAll('#preview blockquote.md-callout').length >= 1;
+              }
+              return JSON.stringify({runtimeReady, listed: listed.length, hello: !!hello, activated, ran, disableWorks, reenableWorks});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        const pc2 = JSON.parse(pluginCheck)
+        const pcOk = pc2.runtimeReady && pc2.hello && pc2.activated && pc2.ran && pc2.disableWorks && pc2.reenableWorks
+        console.log(`[plugin-check] runtime=${pc2.runtimeReady} listed=${pc2.listed} hello=${pc2.hello} activated=${pc2.activated} ran=${pc2.ran} calloutOff=${pc2.disableWorks} calloutOn=${pc2.reenableWorks} ${pcOk ? 'OK' : 'FAIL'}`)
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -792,6 +844,37 @@ async function createWindow() {
     }, 8000)
   }
   return win
+}
+
+/** 测试用示例插件：验证 manifest -> 激活 -> 命令贡献 -> DOM 副作用全链路 */
+async function writeSamplePlugin() {
+  const dir = path.join(app.getPath('userData'), 'plugins', 'hello-inkleaf')
+  await fs.promises.mkdir(dir, { recursive: true })
+  const manifest = {
+    id: 'hello-inkleaf',
+    name: 'Hello Inkleaf',
+    version: '0.1.0',
+    engines: { inkleaf: '>=0.4.0' },
+    main: 'main.mjs',
+    activation: ['onCommand:hello.hello'],
+    contributes: { commands: [{ id: 'hello.hello', title: '打个招呼' }] },
+    permissions: ['commands', 'ui'],
+  }
+  await fs.promises.writeFile(path.join(dir, 'ink.plugin.json'), JSON.stringify(manifest, null, 2))
+  const code = [
+    'export async function activate(ink) {',
+    "  ink.commands.register({ id: 'hello.hello', title: '打个招呼', run: () => {",
+    "    const el = document.createElement('div')",
+    "    el.id = 'ink-hello-marker'",
+    "    el.textContent = 'hello from plugin'",
+    '    document.body.appendChild(el)',
+    '  } })',
+    '}',
+    'export function deactivate() {',
+    "  document.getElementById('ink-hello-marker')?.remove()",
+    '}',
+  ].join('\n')
+  await fs.promises.writeFile(path.join(dir, 'main.mjs'), code)
 }
 
 function buildMenu() {
