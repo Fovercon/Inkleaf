@@ -3,13 +3,9 @@ import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
 import chokidar from 'chokidar'
+import { CH, TreeNode, TextHit, ConfirmOptions, FsEvent } from '../shared/ipc'
 
-export interface TreeNode {
-  name: string
-  path: string
-  type: 'dir' | 'file'
-  children?: TreeNode[]
-}
+export type { TreeNode } from '../shared/ipc'
 
 let libraryRoot: string | null = null
 let watcher: chokidar.FSWatcher | null = null
@@ -101,7 +97,7 @@ async function startWatch(root: string) {
   })
   const emit = (event: string) => (p: string) => {
     fileListCache = null
-    broadcast('fs:event', { event, path: p })
+    broadcast(CH.fsEvent, { event, path: p })
   }
   watcher.on('add', emit('add')).on('unlink', emit('unlink')).on('change', emit('change'))
     .on('addDir', emit('addDir')).on('unlinkDir', emit('unlinkDir'))
@@ -115,7 +111,7 @@ export async function stopWatch() {
 }
 
 export function registerIpc() {
-  ipcMain.handle('dialog:openFolder', async () => {
+  ipcMain.handle(CH.dialogOpenFolder, async () => {
     const r = await dialog.showOpenDialog({
       title: '选择 Markdown 书库文件夹',
       properties: ['openDirectory', 'createDirectory'],
@@ -123,7 +119,7 @@ export function registerIpc() {
     return r.canceled ? null : r.filePaths[0]
   })
 
-  ipcMain.handle('dialog:openFile', async () => {
+  ipcMain.handle(CH.dialogOpenFile, async () => {
     const r = await dialog.showOpenDialog({
       title: '打开 Markdown 文件',
       properties: ['openFile'],
@@ -132,7 +128,7 @@ export function registerIpc() {
     return r.canceled ? null : r.filePaths[0]
   })
 
-  ipcMain.handle('dialog:saveNewFile', async (e, dir: string, defaultName: string) => {
+  ipcMain.handle(CH.dialogSaveNewFile, async (e, dir: string, defaultName: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     const options = {
       title: '新建 Markdown 文件',
@@ -143,7 +139,7 @@ export function registerIpc() {
     return r.canceled ? null : r.filePath
   })
 
-  ipcMain.handle('lib:open', async (_e, root: string) => {
+  ipcMain.handle(CH.libOpen, async (_e, root: string) => {
     if (!fsSync.existsSync(root)) return null
     libraryRoot = root
     // tree first so the UI fills fast; the watcher can warm up afterwards
@@ -153,7 +149,7 @@ export function registerIpc() {
     return tree
   })
 
-  ipcMain.handle('lib:tree', () => (libraryRoot ? readTree(libraryRoot) : []))
+  ipcMain.handle(CH.libTree, () => (libraryRoot ? readTree(libraryRoot) : []))
 
   async function listFiles(): Promise<string[]> {
     const root = libraryRoot
@@ -179,14 +175,14 @@ export function registerIpc() {
     return files
   }
 
-  ipcMain.handle('lib:listFiles', () => listFiles())
+  ipcMain.handle(CH.libListFiles, () => listFiles())
 
-  ipcMain.handle('search:text', async (_e, query: string) => {
+  ipcMain.handle(CH.searchText, async (_e, query: string) => {
     const root = libraryRoot
     if (!root || !query.trim()) return []
     const ql = query.toLowerCase()
     const files = await listFiles()
-    const results: { path: string; line: number; text: string }[] = []
+    const results: TextHit[] = []
     for (const f of files) {
       if (results.length >= 300) break
       try {
@@ -205,27 +201,27 @@ export function registerIpc() {
     return results
   })
 
-  ipcMain.handle('lib:close', async () => {
+  ipcMain.handle(CH.libClose, async () => {
     await stopWatch()
     libraryRoot = null
     await patchSession({ libraryRoot: null })
   })
 
-  ipcMain.handle('fs:read', (_e, p: string) => fs.readFile(p, 'utf8'))
+  ipcMain.handle(CH.fsRead, (_e, p: string) => fs.readFile(p, 'utf8'))
 
-  ipcMain.handle('fs:write', async (_e, p: string, content: string) => {
+  ipcMain.handle(CH.fsWrite, async (_e, p: string, content: string) => {
     const tmp = p + '.mdr-tmp'
     await fs.writeFile(tmp, content, 'utf8')
     await fs.rename(tmp, p)
   })
 
   // used for pasted images; creates parent directories as needed
-  ipcMain.handle('fs:writeBinary', async (_e, p: string, base64: string) => {
+  ipcMain.handle(CH.fsWriteBinary, async (_e, p: string, base64: string) => {
     await fs.mkdir(path.dirname(p), { recursive: true })
     await fs.writeFile(p, Buffer.from(base64, 'base64'))
   })
 
-  ipcMain.handle('fs:rename', async (_e, oldPath: string, newPath: string) => {
+  ipcMain.handle(CH.fsRename, async (_e, oldPath: string, newPath: string) => {
     if (fsSync.existsSync(newPath)) return { ok: false, error: '同名文件已存在' }
     try {
       await fs.rename(oldPath, newPath)
@@ -235,13 +231,13 @@ export function registerIpc() {
     }
   })
 
-  ipcMain.handle('fs:trash', (_e, p: string) => shell.trashItem(p))
+  ipcMain.handle(CH.fsTrash, (_e, p: string) => shell.trashItem(p))
 
-  ipcMain.handle('fs:mkdir', (_e, dir: string) => fs.mkdir(dir, { recursive: true }))
+  ipcMain.handle(CH.fsMkdir, (_e, dir: string) => fs.mkdir(dir, { recursive: true }))
 
-  ipcMain.handle('fs:exists', (_e, p: string) => fsSync.existsSync(p))
+  ipcMain.handle(CH.fsExists, (_e, p: string) => fsSync.existsSync(p))
 
-  ipcMain.handle('dialog:pickImage', async (e) => {
+  ipcMain.handle(CH.dialogPickImage, async (e) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     const options = {
       title: '插入图片',
@@ -253,7 +249,7 @@ export function registerIpc() {
   })
 
   // copies an image into <docDir>/assets with a timestamped name; returns the destination path
-  ipcMain.handle('fs:copyImage', async (_e, src: string, destDir: string) => {
+  ipcMain.handle(CH.fsCopyImage, async (_e, src: string, destDir: string) => {
     try {
       await fs.mkdir(destDir, { recursive: true })
       const name = src.split('/').pop() ?? 'image.png'
@@ -266,7 +262,7 @@ export function registerIpc() {
     }
   })
 
-  ipcMain.handle('dialog:confirm', async (e, opts: { title: string; message: string; okLabel?: string }) => {
+  ipcMain.handle(CH.dialogConfirm, async (e, opts: { title: string; message: string; okLabel?: string }) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     if (!win) return false
     const r = await dialog.showMessageBox(win, {
@@ -280,7 +276,7 @@ export function registerIpc() {
     return r.response === 1
   })
 
-  ipcMain.handle('export:savePath', async (e, defaultName: string, ext: string) => {
+  ipcMain.handle(CH.exportSavePath, async (e, defaultName: string, ext: string) => {
     const win = BrowserWindow.fromWebContents(e.sender)
     const options = {
       title: '导出',
@@ -291,7 +287,7 @@ export function registerIpc() {
     return r.canceled ? null : r.filePath
   })
 
-  ipcMain.handle('export:pdf', async (_e, html: string, target: string) => {
+  ipcMain.handle(CH.exportPdf, async (_e, html: string, target: string) => {
     const tmp = path.join(app.getPath('temp'), `mdr-export-${Date.now()}.html`)
     await fs.writeFile(tmp, html, 'utf8')
     const win = new BrowserWindow({ show: false, webPreferences: { sandbox: true } })
@@ -313,21 +309,21 @@ export function registerIpc() {
     }
   })
 
-  ipcMain.handle('shell:reveal', (_e, p: string) => {
+  ipcMain.handle(CH.shellReveal, (_e, p: string) => {
     // CI has no desktop file manager. xdg-open's browser fallback can inherit
     // the test log pipe and keep it open after Electron has exited.
     if (process.env.MDR_TEST) return
     shell.showItemInFolder(p)
   })
 
-  ipcMain.handle('session:get', () => readSession())
-  ipcMain.handle('session:set', (_e, s: Record<string, unknown>) => writeSession(s))
+  ipcMain.handle(CH.sessionGet, () => readSession())
+  ipcMain.handle(CH.sessionSet, (_e, s: Record<string, unknown>) => writeSession(s))
 
   // macOS window chrome: unsaved dot + proxy file icon in the titlebar
-  ipcMain.handle('win:edited', (_e, edited: boolean) => {
+  ipcMain.handle(CH.winEdited, (_e, edited: boolean) => {
     if (process.platform === 'darwin') BrowserWindow.getAllWindows().forEach((w) => w.setDocumentEdited(edited))
   })
-  ipcMain.handle('win:file', (_e, p: string | null) => {
+  ipcMain.handle(CH.winFile, (_e, p: string | null) => {
     BrowserWindow.getAllWindows().forEach((w) => {
       if (p) {
         if (process.platform === 'darwin') w.setRepresentedFilename(p)
