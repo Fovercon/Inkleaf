@@ -3,7 +3,8 @@ import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
 import chokidar from 'chokidar'
-import { CH, TreeNode, TextHit, ConfirmOptions, FsEvent } from '../shared/ipc'
+import { CH, TreeNode, TextHit, ConfirmOptions, FsEvent, TagCount, Backlink } from '../shared/ipc'
+import * as indexService from './index-service'
 
 export type { TreeNode } from '../shared/ipc'
 
@@ -97,6 +98,8 @@ async function startWatch(root: string) {
   })
   const emit = (event: string) => (p: string) => {
     fileListCache = null
+    if (event === 'unlink' || event === 'unlinkDir') indexService.unindexPath(p)
+    else void indexService.indexFile(p)
     broadcast(CH.fsEvent, { event, path: p })
   }
   watcher.on('add', emit('add')).on('unlink', emit('unlink')).on('change', emit('change'))
@@ -145,6 +148,11 @@ export function registerIpc() {
     // tree first so the UI fills fast; the watcher can warm up afterwards
     const tree = await readTree(root)
     void startWatch(root).catch(() => {})
+    void (async () => {
+      if (!(await indexService.loadPersistedIndex(root))) {
+        await indexService.buildIndex(root, await listFiles())
+      }
+    })()
     await patchSession({ libraryRoot: root })
     return tree
   })
@@ -204,6 +212,7 @@ export function registerIpc() {
   ipcMain.handle(CH.libClose, async () => {
     await stopWatch()
     libraryRoot = null
+    indexService.clearIndex()
     await patchSession({ libraryRoot: null })
   })
 
@@ -315,6 +324,10 @@ export function registerIpc() {
     if (process.env.MDR_TEST) return
     shell.showItemInFolder(p)
   })
+
+  ipcMain.handle(CH.indexTags, (): TagCount[] => indexService.queryTags())
+  ipcMain.handle(CH.indexBacklinks, (_e, name: string): Backlink[] => indexService.queryBacklinks(name))
+  ipcMain.handle(CH.indexResolve, (_e, name: string): string | null => indexService.resolveName(name))
 
   ipcMain.handle(CH.sessionGet, () => readSession())
   ipcMain.handle(CH.sessionSet, (_e, s: Record<string, unknown>) => writeSession(s))

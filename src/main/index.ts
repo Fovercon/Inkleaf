@@ -545,6 +545,30 @@ async function createWindow() {
           })()
         `)
         console.log(`[focus-check] ${focusCheck}`)
+        // document index check: tags / wikilinks / backlinks
+        const indexCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              const tags = await window.mdr.indexTags();
+              const backlinks = await window.mdr.indexBacklinks('云南七日游');
+              const resolve = await window.mdr.indexResolve('算法笔记');
+              const tagNames = (tags || []).map(t => t.tag);
+              return JSON.stringify({
+                hasTravel: tagNames.includes('旅行'),
+                hasYunnan: tagNames.includes('云南'),
+                hasBudget: tagNames.includes('预算'),
+                backlinks: (backlinks || []).length,
+                backlinkFrom: (backlinks || [])[0]?.path?.split('/').pop() ?? null,
+                resolveOk: typeof resolve === 'string' && resolve.endsWith('算法笔记.md'),
+              });
+            } catch (err) {
+              return JSON.stringify({ error: String(err) });
+            }
+          })()
+        `)
+        const ic = JSON.parse(indexCheck)
+        const icOk = ic.hasTravel && ic.hasYunnan && ic.hasBudget && ic.backlinks >= 1 && ic.resolveOk
+        console.log(`[index-check] travel=${ic.hasTravel} yunnan=${ic.hasYunnan} budget=${ic.hasBudget} backlinks=${ic.backlinks}(${ic.backlinkFrom}) resolve=${ic.resolveOk} ${icOk ? 'OK' : 'FAIL'}`)
         const focusShot = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-focus.png`), focusShot.toPNG())
         await win.webContents.executeJavaScript(`

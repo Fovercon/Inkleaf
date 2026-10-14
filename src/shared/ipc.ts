@@ -35,6 +35,16 @@ export interface FsEvent {
   path: string
 }
 
+export interface TagCount {
+  tag: string
+  count: number
+}
+
+export interface Backlink {
+  path: string
+  line: number
+}
+
 // ---------- 通道名 ----------
 
 export const CH = {
@@ -48,6 +58,9 @@ export const CH = {
   libClose: 'lib:close',
   libTree: 'lib:tree',
   libListFiles: 'lib:listFiles',
+  indexTags: 'index:tags',
+  indexBacklinks: 'index:backlinks',
+  indexResolve: 'index:resolve',
   searchText: 'search:text',
   fsRead: 'fs:read',
   fsWrite: 'fs:write',
