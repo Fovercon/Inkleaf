@@ -340,6 +340,7 @@ export function registerIpc() {
   ipcMain.handle(CH.indexPeek, (_e, p: string): Promise<{ title: string; excerpt: string } | null> =>
     indexService.peekDoc(p))
   ipcMain.handle(CH.indexFilesByTag, (_e, tag: string): string[] => indexService.queryFilesByTag(tag))
+  ipcMain.handle(CH.indexListNames, (): { name: string; path: string }[] => indexService.listNames())
 
   ipcMain.handle(CH.sessionGet, () => readSession())
   ipcMain.handle(CH.sessionSet, (_e, s: Record<string, unknown>) => writeSession(s))

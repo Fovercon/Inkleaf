@@ -792,6 +792,7 @@ async function boot() {
       applyLayout()
     },
   )
+  editor.docNamesProvider = () => window.mdr.indexListNames()
   applyFocusModes()
   editor.setTypewriter(getState().typewriter)
   setupFocusHighlight(previewScroll, preview)
@@ -834,6 +835,11 @@ async function boot() {
   // test hook: dispatch any registered command by id
   document.addEventListener('mdr-test-command', (e) => {
     runCommand(String((e as CustomEvent).detail?.id ?? ''))
+  })
+  // test hook: type text into the editor at the cursor (drives CM input pipeline)
+  document.addEventListener('mdr-test-type', (e) => {
+    editor.focus()
+    editor.typeText(String((e as CustomEvent).detail?.text ?? ''))
   })
 
   // Files opened from the system file manager, command line, or recent files.

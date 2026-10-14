@@ -5,6 +5,7 @@ import { indentMore, indentLess } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
+import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
 
 const AUTOSAVE_DELAY = 2000
 
@@ -123,6 +124,36 @@ export class EditorPane {
   onDocChanged: (() => void) | null = null
   onStatsChange: ((stats: string) => void) | null = null
 
+  /** 文档名缓存供给（[[ 补全用），由总装注入 */
+  docNamesProvider: (() => Promise<{ name: string; path: string }[]>) | null = null
+  private nameCache: { name: string; path: string }[] = []
+  private nameCacheAt = 0
+
+  private async freshNames(): Promise<{ name: string; path: string }[]> {
+    if (Date.now() - this.nameCacheAt < 5000) return this.nameCache
+    this.nameCache = (await this.docNamesProvider?.().catch(() => [])) ?? []
+    this.nameCacheAt = Date.now()
+    return this.nameCache
+  }
+
+  /** [[ 补全：输入 "[[" 后提示文档名，apply 插入 "名称]]" */
+  private wikilinkCompletions = async (ctx: CompletionContext): Promise<CompletionResult | null> => {
+    const before = ctx.matchBefore(/\[\[[^\[\]]*$/)
+    if (!before) return null
+    const from = before.from + 2
+    if (ctx.pos - from > 60) return null
+    const names = await this.freshNames()
+    const options = names.slice(0, 100).map((n) => ({
+      label: n.name,
+      detail: n.path.split('/').slice(-2, -1).join('/'),
+      apply: (view: EditorView, _c: unknown, from2: number, to: number) => {
+        view.dispatch({ changes: { from: from2, to, insert: `${n.name}]]` } })
+      },
+      type: 'text',
+    }))
+    return { from, options, validFor: /^[^\[\]]*$/ }
+  }
+
   mount(host: HTMLElement, dark: boolean) {
     this.view = new EditorView({
       parent: host,
@@ -137,6 +168,7 @@ export class EditorPane {
       markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
       EditorView.lineWrapping,
       this.themeComp.of(dark ? oneDark : []),
+      autocompletion({ override: [this.wikilinkCompletions] }),
       // list nesting / selection indent (after basicSetup so it takes precedence)
       keymap.of([
         { key: 'Tab', run: indentMore, shift: indentLess },
@@ -301,6 +333,14 @@ export class EditorPane {
     const sel = v.state.selection.main
     v.dispatch({ changes: { from: sel.from, to: sel.to, insert: `![](${ref})\n` } })
     this.focus()
+  }
+
+  /** 测试钩子：在光标处插入文本（走正常输入管线，可触发补全） */
+  typeText(text: string): void {
+    const v = this.view
+    if (!v) return
+    this.focus()
+    v.dispatch(v.state.replaceSelection(text), { userEvent: 'input.type' })
   }
 
   private async savePastedImage(file: File) {

@@ -63,6 +63,7 @@ export const CH = {
   indexResolve: 'index:resolve',
   indexPeek: 'index:peek',
   indexFilesByTag: 'index:filesByTag',
+  indexListNames: 'index:listNames',
   searchText: 'search:text',
   fsRead: 'fs:read',
   fsWrite: 'fs:write',

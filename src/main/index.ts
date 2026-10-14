@@ -688,6 +688,32 @@ async function createWindow() {
         const tb = JSON.parse(tabCheck)
         const tabOk = tb.bar && tb.initial === 1 && tb.afterOpen === 2 && tb.activeTitle === '旅行计划.md' && tb.backTitle === 'README.md' && tb.afterClose === 1
         console.log(`[tab-check] bar=${tb.bar} initial=${tb.initial} open=${tb.afterOpen}(${tb.activeTitle}) back=${tb.backTitle} close=${tb.beforeClose}->${tb.afterClose} ${tabOk ? 'OK' : 'FAIL'}`)
+        // [[ completion check: typing [[ in the editor offers document names; original content restored after
+        const readmePath4Restore = path.join(testLibrary, 'README.md')
+        const readmeBefore = fs.readFileSync(readmePath4Restore, 'utf8')
+        const completionCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              const cm = document.querySelector('.cm-content');
+              if (!cm) return JSON.stringify({focused: false});
+              cm.focus();
+              document.dispatchEvent(new CustomEvent('mdr-test-type', {detail: {text: '[['}}));
+              await new Promise(r => setTimeout(r, 1800));
+              const tooltip = document.querySelector('.cm-tooltip-autocomplete');
+              const options = [...(tooltip?.querySelectorAll('li') ?? [])].map(li => li.textContent ?? '');
+              return JSON.stringify({tooltip: !!tooltip, options: options.slice(0, 6)});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        // 还原文档：编辑器中残留的 [[ 不落盘（先停自动保存风险——直接写回原文并让 fs 事件重载）
+        await win.webContents.executeJavaScript(
+          `window.mdr.writeFile(${JSON.stringify(readmePath4Restore)}, ${JSON.stringify(readmeBefore)})`,
+        ).catch(() => {})
+        const cc = JSON.parse(completionCheck)
+        const ccOk = cc.tooltip && (cc.options || []).some((o: string) => o.includes('旅行计划'))
+        console.log(`[completion-check] tooltip=${cc.tooltip} options=${JSON.stringify(cc.options)} ${ccOk ? 'OK' : 'FAIL'}`)
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {

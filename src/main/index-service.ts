@@ -187,6 +187,24 @@ export async function loadPersistedIndex(root: string): Promise<boolean> {
   }
 }
 
+/** 全部文档名（basename 与 title 双出口），供 [[ 补全 */
+export function listNames(): { name: string; path: string }[] {
+  const out: { name: string; path: string }[] = []
+  const seen = new Set<string>()
+  for (const e of entries.values()) {
+    const base = baseName(e.path)
+    if (base && !seen.has(base)) {
+      seen.add(base)
+      out.push({ name: base, path: e.path })
+    }
+    if (e.title && e.title !== base && !seen.has(e.title)) {
+      seen.add(e.title)
+      out.push({ name: e.title, path: e.path })
+    }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+}
+
 /** 标签 → 文档路径列表 */
 export function queryFilesByTag(tag: string): string[] {
   const out: string[] = []
