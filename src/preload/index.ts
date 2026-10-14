@@ -24,8 +24,8 @@ const api = {
     ipcRenderer.invoke(CH.libOpen, root),
   readTree: (): Promise<TreeNode[]> => ipcRenderer.invoke(CH.libTree),
   listFiles: (): Promise<string[]> => ipcRenderer.invoke(CH.libListFiles),
-  searchText: (query: string): Promise<TextHit[]> =>
-    ipcRenderer.invoke(CH.searchText, query),
+  searchText: (query: string, isRegex?: boolean): Promise<TextHit[]> =>
+    ipcRenderer.invoke(CH.searchText, query, isRegex),
   closeLibrary: (): Promise<void> => ipcRenderer.invoke(CH.libClose),
   indexTags: (): Promise<TagCount[]> => ipcRenderer.invoke(CH.indexTags),
   indexBacklinks: (name: string): Promise<Backlink[]> => ipcRenderer.invoke(CH.indexBacklinks, name),

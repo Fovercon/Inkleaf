@@ -9,7 +9,7 @@ export type PaletteMode = 'files' | 'search'
 
 export interface PaletteOpts {
   listFiles: () => Promise<string[]>
-  searchText: (q: string) => Promise<{ path: string; line: number; text: string }[]>
+  searchText: (q: string, isRegex?: boolean) => Promise<{ path: string; line: number; text: string }[]>
   recent: () => string[]
   libraryRoot: () => string | null
   onOpenFile: (path: string, line?: number) => void
@@ -79,7 +79,7 @@ export function openPalette(mode: PaletteMode, opts: PaletteOpts) {
   const input = document.createElement('input')
   input.className = 'palette-input'
   input.type = 'text'
-  input.placeholder = mode === 'files' ? '输入文件名，模糊匹配…' : '在书库全部文档中搜索…'
+  input.placeholder = mode === 'files' ? '输入文件名，模糊匹配…' : '搜索书库全部文档…（/ 开头为正则）'
   const list = document.createElement('div')
   list.className = 'palette-list'
   box.appendChild(input)
@@ -176,8 +176,13 @@ export function openPalette(mode: PaletteMode, opts: PaletteOpts) {
     renderRows()
   }
 
-  const searchText = async (q: string) => {
-    const results = await opts.searchText(q)
+  const searchText = async (raw: string) => {
+    // '/'-prefixed queries switch the palette to regex matching;
+    // a trailing '/' (regex-literal habit) is tolerated and stripped
+    const isRegex = raw.startsWith('/')
+    let q = isRegex ? raw.slice(1) : raw
+    if (isRegex && q.length > 1 && q.endsWith('/')) q = q.slice(0, -1)
+    const results = await opts.searchText(q, isRegex)
     if (closed) return
     const root = opts.libraryRoot()
     rows = []

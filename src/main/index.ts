@@ -569,6 +569,28 @@ async function createWindow() {
         const ic = JSON.parse(indexCheck)
         const icOk = ic.hasTravel && ic.hasYunnan && ic.hasBudget && ic.backlinks >= 1 && ic.resolveOk
         console.log(`[index-check] travel=${ic.hasTravel} yunnan=${ic.hasYunnan} budget=${ic.hasBudget} backlinks=${ic.backlinks}(${ic.backlinkFrom}) resolve=${ic.resolveOk} ${icOk ? 'OK' : 'FAIL'}`)
+        // regex search check: '/'-prefixed query in the search palette uses RegExp matching
+        const regexCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              const direct = await window.mdr.searchText('Day \\\\d', true);
+              document.dispatchEvent(new CustomEvent('mdr-test-palette', {detail: {mode: 'search'}}));
+              await new Promise(r => setTimeout(r, 350));
+              const input = document.querySelector('.palette-input');
+              if (!input) return JSON.stringify({lines: 0, direct: direct.length});
+              input.value = '/Day \\\\d/';
+              input.dispatchEvent(new Event('input', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 2200));
+              const lines = document.querySelectorAll('.pal-line').length;
+              document.querySelector('.palette-input')?.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+              return JSON.stringify({lines, direct: direct.length});
+            } catch (err) {
+              return JSON.stringify({lines: 0, error: String(err)});
+            }
+          })()
+        `)
+        const rxc = JSON.parse(regexCheck)
+        console.log(`[regex-check] lines=${rxc.lines} direct=${rxc.direct} ${rxc.lines >= 4 && rxc.direct >= 4 ? 'OK' : 'FAIL'}`)
         const focusShot = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-focus.png`), focusShot.toPNG())
         await win.webContents.executeJavaScript(`

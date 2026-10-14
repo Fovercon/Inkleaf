@@ -361,7 +361,7 @@ function zoomFont(delta: number) {
 function paletteOpts() {
   return {
     listFiles: () => window.mdr.listFiles(),
-    searchText: (q: string) => window.mdr.searchText(q),
+    searchText: (q: string, isRegex?: boolean) => window.mdr.searchText(q, isRegex),
     recent: () => getState().recent,
     libraryRoot: () => runtime.libraryRoot,
     onOpenFile: (p: string, line?: number) => void openFile(p, { line }),

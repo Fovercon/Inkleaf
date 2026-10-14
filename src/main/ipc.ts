@@ -185,10 +185,19 @@ export function registerIpc() {
 
   ipcMain.handle(CH.libListFiles, () => listFiles())
 
-  ipcMain.handle(CH.searchText, async (_e, query: string) => {
+  ipcMain.handle(CH.searchText, async (_e, query: string, isRegex?: boolean) => {
     const root = libraryRoot
     if (!root || !query.trim()) return []
     const ql = query.toLowerCase()
+    // '/'-prefixed palette queries arrive as regex; invalid patterns return no hits
+    let re: RegExp | null = null
+    if (isRegex) {
+      try {
+        re = new RegExp(query, 'i')
+      } catch {
+        return []
+      }
+    }
     const files = await listFiles()
     const results: TextHit[] = []
     for (const f of files) {
@@ -197,7 +206,7 @@ export function registerIpc() {
         const lines = (await fs.readFile(f, 'utf8')).split('\n')
         let count = 0
         for (let i = 0; i < lines.length && count < 20; i++) {
-          if (lines[i].toLowerCase().includes(ql)) {
+          if (re ? re.test(lines[i]) : lines[i].toLowerCase().includes(ql)) {
             results.push({ path: f, line: i + 1, text: lines[i].trim().slice(0, 160) })
             count++
           }
