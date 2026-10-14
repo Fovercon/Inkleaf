@@ -1,5 +1,6 @@
 export type ThemePref = 'auto' | 'light' | 'sepia' | 'green' | 'dark'
-export type PaneKey = 'sidebar' | 'editor' | 'preview' | 'outline'
+/** 面板键：内置四面板 + 注册表面板（如 backlink）动态扩展 */
+export type PaneKey = 'sidebar' | 'editor' | 'preview' | 'outline' | (string & {})
 
 export interface UiState {
   theme: ThemePref

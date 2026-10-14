@@ -624,7 +624,7 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'toggle-editor', title: '切换编辑面板', run: () => togglePane('editor') })
   registerCommand({ id: 'toggle-preview', title: '切换预览面板', run: () => togglePane('preview') })
   registerCommand({ id: 'toggle-outline', title: '切换大纲', run: () => togglePane('outline') })
-  registerCommand({ id: 'toggle-backlink', title: '切换反向链接', run: () => togglePane('backlink' as PaneKey) })
+  registerCommand({ id: 'toggle-backlink', title: '切换反向链接', run: () => togglePane('backlink') })
   // 主题与字号
   registerCommand({ id: 'theme-light', title: '浅色主题', run: () => setTheme('light') })
   registerCommand({ id: 'theme-sepia', title: '羊皮纸主题', run: () => setTheme('sepia') })
