@@ -3,7 +3,8 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { registerIpc, getLibraryRoot, rebuildDockMenu, stopWatch, flushSessionWrites } from './ipc'
+import { registerIpc, rebuildDockMenu, stopWatch, flushSessionWrites } from './ipc'
+import { handleLocalAsset } from './local-assets'
 import { registerPluginIpc, resolvePluginFile } from './plugins-host'
 import { initializeUpdater } from './updater'
 import { markdownFromArguments } from './openPath'
@@ -17,18 +18,6 @@ protocol.registerSchemesAsPrivileged([
 
 const RENDERER_ROOT = path.join(__dirname, 'renderer')
 const readyWindows = new Set<number>()
-
-const MIME: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-  '.avif': 'image/avif',
-  '.bmp': 'image/bmp',
-  '.ico': 'image/x-icon',
-}
 
 // Keep the existing profile so rebranding preserves libraries, themes and recents.
 app.setPath('userData', process.env.MDR_TEST
@@ -110,22 +99,7 @@ if (!gotLock) {
       return net.fetch(pathToFileURL(abs).toString())
     })
 
-    // serves local images referenced from markdown, restricted to the current library root
-    protocol.handle('mdasset', async (request) => {
-      const u = new URL(request.url)
-      const abs = path.normalize(decodeURIComponent(u.pathname))
-      const root = getLibraryRoot()
-      if (!root || !abs.startsWith(root + path.sep)) {
-        return new Response('forbidden', { status: 403 })
-      }
-      try {
-        const data = await fsp.readFile(abs)
-        const type = MIME[path.extname(abs).toLowerCase()] ?? 'application/octet-stream'
-        return new Response(new Uint8Array(data), { headers: { 'content-type': type } })
-      } catch {
-        return new Response('not found', { status: 404 })
-      }
-    })
+    protocol.handle('mdasset', request => handleLocalAsset(request.url))
 
     // External modules are served only into opaque sandbox frames. No host
     // renderer script permission or preload bridge is granted to plugin code.

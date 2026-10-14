@@ -137,7 +137,7 @@ app.whenReady().then(async () => {
     await run(window, 'window.__docRegression.closeTabUi(1)'); await idle(window)
     const state = await snapshot(window)
     assert.deepEqual(state.paths, []); assert.equal(state.editorPath, null); assert.equal(state.currentFile, null)
-    assert.equal(state.empty, true); assert.equal(context.files.has(A), false)
+    assert.equal(state.empty, false); assert.equal(state.libraryEmpty, true); assert.equal(context.files.has(A), false)
   })
   await scenario('close-active-pauses-input-during-neighbor-read', { libraryRoot: ROOT, lastFile: A }, async (window, context) => {
     await open(window, B, true)
@@ -183,7 +183,7 @@ app.whenReady().then(async () => {
     await idle(window); await delay(window, 50)
     const state = await snapshot(window)
     assert.deepEqual(state.paths, []); assert.equal(state.editorPath, null); assert.equal(state.currentFile, null)
-    assert.equal(state.empty, true); assert.equal(context.files.has(A), false); assert.equal(context.files.has(B), false)
+    assert.equal(state.empty, false); assert.equal(state.libraryEmpty, true); assert.equal(context.files.has(A), false); assert.equal(context.files.has(B), false)
     assert.equal(context.trashAttempts, 2)
   })
   await scenario('batched-inactive-external-change-survives-next-save', { libraryRoot: ROOT, lastFile: A }, async (window, context) => {

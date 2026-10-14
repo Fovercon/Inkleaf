@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { UpdateState } from '../shared/updates'
-import { CH, type TreeNode, type TextHit, type OpResult, type ConfirmOptions, type FsEvent, type TagCount, type Backlink } from '../shared/ipc'
+import { CH, type TreeNode, type TextHit, type OpResult, type ConfirmOptions, type FsEvent, type TagCount, type Backlink, type ImageResolution } from '../shared/ipc'
 
 const api = {
   platform: process.platform,
@@ -35,6 +35,8 @@ const api = {
   indexListNames: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke(CH.indexListNames),
   pluginsList: (): Promise<{ id: string; name: string; version: string; mainUrl: string; manifest: Record<string, unknown> }[]> => ipcRenderer.invoke(CH.pluginsList),
   readFile: (p: string): Promise<string> => ipcRenderer.invoke(CH.fsRead, p),
+  resolveImage: (source: string, documentPath: string): Promise<ImageResolution> =>
+    ipcRenderer.invoke(CH.imageResolve, source, documentPath),
   writeFile: (p: string, content: string): Promise<void> => ipcRenderer.invoke(CH.fsWrite, p, content),
   writeBinary: (p: string, base64: string): Promise<void> => ipcRenderer.invoke(CH.fsWriteBinary, p, base64),
   rename: (oldPath: string, newPath: string): Promise<OpResult> =>

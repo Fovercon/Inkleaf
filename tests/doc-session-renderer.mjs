@@ -24,7 +24,7 @@ const hooks = [
   '    editorPath: editor.currentPath, currentFile: runtime.currentFile, libraryRoot: runtime.libraryRoot,',
   '    content: editor.getContent(), dirty: editor.isDirty(), undoDepth: regressionUndoDepth(editor.view.state),',
   '    editorDark: editor.view.state.facet(RegressionEditorView.darkTheme), jumpLine: regressionJumpLine,',
-  "    empty: document.getElementById('empty-state').classList.contains('visible'), preview: preview.textContent })",
+  "    empty: document.getElementById('empty-state').classList.contains('visible'), libraryEmpty: document.getElementById('library-empty').classList.contains('visible'), preview: preview.textContent })",
   '} })',
 ].join('\n')
 try {

@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'inkleaf-plugin-dom-'))
+const documentFixture = path.join(temporary, 'source.md')
 const source = filename => JSON.stringify(path.join(root, 'src/renderer/src', filename))
 const dangerousStyles = [
   'background-image:url(https://exfil.invalid/a)',
@@ -101,6 +102,10 @@ window.pluginDomTest = (async () => {
     let confirms = 0, postRuns = 0
     const transforms = []
     window.mdr = {
+      resolveImage: async (source, documentPath) => {
+        assert(source === 'picture.png' && documentPath === ${JSON.stringify(documentFixture)}, 'The image resolver must receive the actual source document')
+        return __PRODUCTION_IMAGE_RESOLUTION__
+      },
       indexResolve: async name => { resolutions.push(name); return name === 'Target' ? '/library/Target.md' : null },
       indexPeek: async () => null,
       confirm: async () => { confirms++; return false },
@@ -123,7 +128,7 @@ window.pluginDomTest = (async () => {
     registerPostProcessor(post, true)
     try {
       const container = document.getElementById('preview'), scroller = document.getElementById('scroller')
-      await renderPreview(scroller, container, '- [ ] a task\n\n[[Target#section]]\n\n![local](picture.png)', '/library/source.md')
+      await renderPreview(scroller, container, '- [ ] a task\n\n[[Target#section]]\n\n![local](picture.png)', ${JSON.stringify(documentFixture)})
       await delay()
       assert(postRuns === 1 && container.querySelector('[data-plugin-rewrite="yes"]'), 'The external HTML replacement was not exercised')
       assert(transforms.join(',') === 'first,second', 'Early external transformations must remain FIFO')
@@ -136,7 +141,7 @@ window.pluginDomTest = (async () => {
       link.click()
       assert(navigations.length === 1 && navigations[0].filename === '/library/Target.md' && navigations[0].anchor === 'section' && confirms === 0, 'A changed post result lost the wikilink click listener')
       const image = container.querySelector('img')
-      assert(image.getAttribute('src') === 'mdasset://local/library/picture.png', 'Local asset rewriting must run after the external replacement')
+      assert(image.getAttribute('src') === __PRODUCTION_IMAGE_RESOLUTION__.url, 'Local asset rewriting must run after the external replacement')
       await image.decode()
       assert(image.naturalWidth > 0 && image.naturalHeight > 0, 'The retained mdasset image must decode in the real browser')
     } finally { removePostProcessor(firstPost); removePostProcessor(post) }
@@ -146,8 +151,19 @@ window.pluginDomTest = (async () => {
 `
 
 try {
+  const require = createRequire(import.meta.url)
+  const assetModule = path.join(temporary, 'local-assets.cjs')
+  await build({ entryPoints: [path.join(root, 'src/main/local-assets.ts')], bundle: true, platform: 'node', format: 'cjs', target: 'node22', outfile: assetModule, logLevel: 'silent' })
+  await cp(path.join(root, 'build', 'inkleaf-icon.png'), path.join(temporary, 'picture.png'))
+  await writeFile(documentFixture, '# Real component image fixture')
+  const { TrustedLocalAssets } = require(assetModule)
+  const access = new TrustedLocalAssets()
+  access.setLibraryRoot(temporary)
+  await access.registerDocument(documentFixture)
+  const imageResolution = await access.resolveImage('picture.png', documentFixture)
+  if (!imageResolution.url) throw Error('The production local image resolver rejected the fixture')
   await build({
-    stdin: { contents: renderer, sourcefile: 'plugin-dom-fixture.ts', resolveDir: root, loader: 'ts' },
+    stdin: { contents: renderer.replaceAll('__PRODUCTION_IMAGE_RESOLUTION__', '(' + JSON.stringify(imageResolution) + ')'), sourcefile: 'plugin-dom-fixture.ts', resolveDir: root, loader: 'ts' },
     bundle: true, platform: 'browser', format: 'esm', outfile: path.join(temporary, 'fixture-renderer.js'),
     loader: { '.woff': 'file', '.woff2': 'file', '.ttf': 'file' }, assetNames: 'assets/[name]-[hash]',
     plugins: [{ name: 'controlled-theme-and-mermaid', setup(builder) {
@@ -158,21 +174,23 @@ try {
         : "export default {initialize(){},async render(){return {svg:'<svg></svg>'}}}", loader: 'js' }))
     } }],
   })
-  await cp(path.join(root, 'build', 'inkleaf-icon.png'), path.join(temporary, 'picture.png'))
   const html = path.join(temporary, 'index.html')
   await writeFile(html, `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none';script-src 'self';style-src 'self' 'unsafe-inline';font-src 'self';img-src 'self' mdasset: data:;connect-src 'none'"><link rel="stylesheet" href="./fixture-renderer.css"></head><body><div id="formula"></div><div id="scroller"><div id="preview"></div></div><script type="module" src="./fixture-renderer.js"></script></body></html>`)
   const worker = path.join(temporary, 'worker.cjs')
   await writeFile(worker, String.raw`
 const {app,BrowserWindow,protocol}=require('electron')
 let resultCode=0
-protocol.registerSchemesAsPrivileged([{scheme:'mdasset',privileges:{standard:true,secure:true,supportFetchAPI:true}}])
+protocol.registerSchemesAsPrivileged([{scheme:'mdasset',privileges:{standard:true,secure:true,supportFetchAPI:true,stream:true}}])
 app.setPath('userData',process.argv[3])
 app.on('will-quit',()=>{if(resultCode!==0)app.exit(resultCode)})
 const finish=code=>{resultCode=code;for(const win of BrowserWindow.getAllWindows())win.destroy();app.quit()}
 app.whenReady().then(async()=>{
   const timer=setTimeout(()=>{console.error('Plugin DOM tests timed out');finish(1)},30000)
-  const pixel=require('node:fs').readFileSync(process.argv[4])
-  protocol.handle('mdasset',()=>new Response(pixel,{headers:{'content-type':'image/png'}}))
+  const {TrustedLocalAssets,handleLocalAsset}=require(process.argv[4])
+  const access=new TrustedLocalAssets()
+  access.setLibraryRoot(require('node:path').dirname(process.argv[5]))
+  await access.registerDocument(process.argv[5])
+  protocol.handle('mdasset',request=>handleLocalAsset(request.url,access))
   const win=new BrowserWindow({width:1100,height:800,show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}})
   win.webContents.on('console-message',(_event,_level,message)=>console.log(message))
   await win.loadFile(process.argv[2])
@@ -182,9 +200,9 @@ app.whenReady().then(async()=>{
   finish(result?.passed?0:1)
 }).catch(error=>{console.error(error);finish(1)})
 `)
-  const require = createRequire(import.meta.url), environment = { ...process.env }
+  const environment = { ...process.env }
   delete environment.ELECTRON_RUN_AS_NODE
-  execFileSync(require('electron'), [worker, html, path.join(temporary, 'profile'), path.join(temporary, 'picture.png'), '--disable-gpu'], { cwd: root, env: environment, stdio: 'inherit', timeout: 45000 })
+  execFileSync(require('electron'), [worker, html, path.join(temporary, 'profile'), assetModule, documentFixture, '--disable-gpu'], { cwd: root, env: environment, stdio: 'inherit', timeout: 45000 })
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }

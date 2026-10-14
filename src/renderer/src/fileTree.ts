@@ -23,6 +23,8 @@ export class FileTree {
   private menu: HTMLDivElement | null = null
   private filterQuery = ''
   private editing: Editing = null
+  private refreshSequence = 0
+  private documentCount = 0
 
   onOpenFile: ((path: string, newTab?: boolean) => void) | null = null
   onCreated: ((path: string) => void) | null = null
@@ -54,9 +56,30 @@ export class FileTree {
   }
 
   async refresh() {
-    this.nodes = await window.mdr.readTree()
+    const sequence = ++this.refreshSequence
+    const root = runtime.libraryRoot
+    const nodes = await window.mdr.readTree()
+    if (sequence !== this.refreshSequence || root !== runtime.libraryRoot) return
+    this.load(nodes)
+  }
+
+  /** Reuse the tree returned while opening a library rather than scanning twice. */
+  load(nodes: TreeNode[], reset = false) {
+    this.refreshSequence++
+    this.nodes = nodes
+    const count = (items: TreeNode[]): number => items.reduce((total, node) => total + (node.type === 'file' ? 1 : count(node.children ?? [])), 0)
+    this.documentCount = count(nodes)
+    if (reset) {
+      this.selected = null
+      this.lastClickedDir = null
+      this.editing = null
+      this.filterQuery = ''
+      this.hideMenu()
+    }
     this.render()
   }
+
+  get hasDocuments(): boolean { return this.documentCount > 0 }
 
   /** directory that "new file" should land in: parent of selection, else last clicked folder, else root */
   currentDir(root: string | null): string | null {

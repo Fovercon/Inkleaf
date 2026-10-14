@@ -130,7 +130,12 @@ function applyLayout() {
   $('#resizer-editor').classList.toggle('pane-collapsed', collapsed('editor') || collapsed('preview'))
   $('#btn-toggle-editor').setAttribute('aria-pressed', String(!collapsed('editor')))
   $('#btn-toggle-preview').setAttribute('aria-pressed', String(!collapsed('preview')))
-  emptyState.classList.toggle('visible', !runtime.currentFile)
+  emptyState.classList.toggle('visible', !runtime.currentFile && !runtime.libraryRoot)
+  $('#library-empty').classList.toggle('visible', !runtime.currentFile && !!runtime.libraryRoot)
+  $('#library-empty-title').textContent = tree.hasDocuments ? '选择一篇文档，开始阅读' : '书库还是空的'
+  $('#library-empty-description').textContent = tree.hasDocuments
+    ? '从左侧选择一篇文档，或新建一页，记录此刻的想法。'
+    : '这里还没有 Markdown 文档。新建一页，让文字开始生长。'
 }
 
 function togglePane(key: PaneKey) {
@@ -153,28 +158,111 @@ function persistSession() {
   sessionSave = sessionSave.catch(() => {}).then(() => window.mdr.setSession(snapshot)).catch(error => console.error('Session save failed', error))
 }
 
-async function openLibrary(root: string): Promise<boolean> {
-  const treeData = await window.mdr.openLibrary(root)
-  if (!treeData) return false
-  runtime.libraryRoot = root
-  session.libraryRoot = root
-  persistSession()
-  $('#library-name').textContent = root.split('/').pop() || '书库'
-  await tree.refresh()
-  applyLayout()
-  return true
+let libraryLoads = 0
+let choosingFolder = false
+let choosingFile = false
+let libraryFailure: string | null = null
+
+function updateLibraryFeedback() {
+  const busy = libraryLoads > 0 || choosingFolder
+  const feedback = $('#library-feedback')
+  const message = libraryLoads > 0 ? '正在打开书库…' : choosingFolder ? '请选择书库文件夹…' : libraryFailure
+  feedback.hidden = !message
+  feedback.textContent = message ?? ''
+  feedback.classList.toggle('loading', busy)
+  feedback.classList.toggle('error', !busy && !!libraryFailure)
+  document.body.classList.toggle('library-loading', busy)
+  sidebar.setAttribute('aria-busy', String(libraryLoads > 0))
+  for (const id of ['btn-open-folder', 'empty-open-folder', 'btn-open-file', 'empty-open-file', 'library-open-file', 'btn-new-file', 'library-new-file']) {
+    const button = $('#' + id) as HTMLButtonElement
+    button.disabled = busy || choosingFile
+    button.classList.toggle('is-loading', busy && (id === 'btn-open-folder' || id === 'empty-open-folder'))
+    button.setAttribute('aria-busy', String(busy && (id === 'btn-open-folder' || id === 'empty-open-folder')))
+  }
+}
+
+async function withLibraryLoading<T>(operation: () => Promise<T>): Promise<T> {
+  libraryLoads++
+  libraryFailure = null
+  updateLibraryFeedback()
+  try { return await operation() }
+  finally { libraryLoads--; updateLibraryFeedback() }
+}
+
+function normalizeLibraryRoot(root: string): string { return root.replace(/\/+$/, '') || '/' }
+function isInLibrary(path: string, root = runtime.libraryRoot): boolean {
+  if (!root) return false
+  const normalized = normalizeLibraryRoot(root)
+  return path === normalized || path.startsWith(normalized === '/' ? '/' : normalized + '/')
+}
+function parentDirectory(path: string): string {
+  const separator = path.lastIndexOf('/')
+  return separator === 0 ? '/' : path.slice(0, separator)
+}
+
+type OpenLibraryOptions = { restoreSession?: boolean }
+function openLibrary(root: string, options?: OpenLibraryOptions): Promise<boolean> {
+  return withLibraryLoading(() => serializeNavigation(() => openLibraryNow(root, options)))
+}
+
+async function openLibraryNow(root: string, options?: OpenLibraryOptions): Promise<boolean> {
+  const normalized = normalizeLibraryRoot(root)
+  editor.setMutationLocked(true)
+  try {
+    try { await saveAllDocuments() }
+    catch (error) {
+      console.error('Save before opening library failed', error)
+      libraryFailure = '当前编辑未能保存，请先保存后再切换书库。'
+      return false
+    }
+    await sessionSave
+    const treeData = await window.mdr.openLibrary(normalized)
+    if (!treeData) throw new Error('Library is unavailable')
+    runtime.libraryRoot = normalized
+    session.libraryRoot = normalized
+    if (!options?.restoreSession) closeFileUi()
+    const filterInput = $('#tree-filter-input') as HTMLInputElement
+    filterInput.value = ''
+    tree.load(treeData, true)
+    const state = getState()
+    state.collapsed.sidebar = false
+    state.expandedDirs = state.expandedDirs.filter(path => isInLibrary(path, normalized))
+    saveState()
+    setSidebarTab('files')
+    $('#library-name').textContent = normalized.split('/').pop() || '书库'
+    persistSession()
+    applyLayout()
+    return true
+  } catch (error) {
+    console.error('Opening library failed', error)
+    libraryFailure = '无法打开所选书库，请检查文件夹是否存在且可以访问。'
+    return false
+  } finally { editor.setMutationLocked(false) }
 }
 
 async function openFolderAction() {
-  const root = await window.mdr.selectFolder()
-  if (root) await openLibrary(root)
+  if (libraryLoads || choosingFolder || choosingFile) return
+  choosingFolder = true
+  libraryFailure = null
+  updateLibraryFeedback()
+  try {
+    const root = await window.mdr.selectFolder()
+    if (root) await openLibrary(root)
+  } catch (error) {
+    console.error('Selecting library failed', error)
+    libraryFailure = '无法选择书库，请重试。'
+  } finally { choosingFolder = false; updateLibraryFeedback() }
 }
 
 async function openFileAction() {
-  const p = await window.mdr.selectFile()
-  if (!p) return
-  if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
-  void openFile(p)
+  if (libraryLoads || choosingFolder || choosingFile) return
+  choosingFile = true
+  updateLibraryFeedback()
+  try {
+    const path = await window.mdr.selectFile()
+    if (path) await openFile(path)
+  } catch (error) { showDocumentError('无法打开文件', error) }
+  finally { choosingFile = false; updateLibraryFeedback() }
 }
 
 let navigation = Promise.resolve()
@@ -307,7 +395,17 @@ function closeFileUi() {
 type OpenDocumentOptions = { line?: number; newTab?: boolean; anchor?: string }
 
 function openFile(path: string, opts?: OpenDocumentOptions): Promise<boolean> {
-  return serializeNavigation(() => openFileNow(path, opts))
+  const operation = () => serializeNavigation(async () => {
+    if (!isInLibrary(path)) {
+      const switchLibrary = () => openLibraryNow(parentDirectory(path))
+      const opened = libraryLoads ? await switchLibrary() : await withLibraryLoading(switchLibrary)
+      if (!opened) return false
+    }
+    const opened = await openFileNow(path, opts)
+    if (opened) { libraryFailure = null; updateLibraryFeedback() }
+    return opened
+  })
+  return isInLibrary(path) ? operation() : withLibraryLoading(operation)
 }
 
 async function openFileNow(path: string, opts?: OpenDocumentOptions): Promise<boolean> {
@@ -674,7 +772,12 @@ async function closeLibrary() {
       runtime.libraryRoot = null
       session.libraryRoot = null
       closeFileUi()
-      await tree.refresh()
+      tree.load([], true)
+      const filterInput = $('#tree-filter-input') as HTMLInputElement
+      filterInput.value = ''
+      $('#library-name').textContent = '我的书库'
+      libraryFailure = null
+      updateLibraryFeedback()
       applyLayout()
     } catch (error) { showDocumentError('保存失败，书库仍保持打开', error) }
     finally { editor.setMutationLocked(false) }
@@ -728,6 +831,8 @@ function setupActions() {
   $('#btn-new-file').addEventListener('click', () => runCommand('new-file'))
   $('#empty-open-folder').addEventListener('click', () => runCommand('open-folder'))
   $('#empty-open-file').addEventListener('click', () => runCommand('open-file'))
+  $('#library-open-file').addEventListener('click', () => runCommand('open-file'))
+  $('#library-new-file').addEventListener('click', () => runCommand('new-file'))
   $('#btn-toggle-sidebar').addEventListener('click', () => runCommand('toggle-sidebar'))
   $('#sidebar-collapse').addEventListener('click', () => runCommand('toggle-sidebar'))
   $('#sidebar-expand').addEventListener('click', () => runCommand('toggle-sidebar'))
@@ -741,10 +846,7 @@ function setupActions() {
     if (runCommand(action)) return
     if (action.startsWith('open-path:')) {
       const p = action.slice('open-path:'.length)
-      void (async () => {
-        if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
-        await openFile(p)
-      })()
+      void openFile(p)
     }
   })
 }
@@ -854,10 +956,7 @@ function setupDragDrop() {
     if (entry?.isDirectory) {
       void openLibrary(path)
     } else if (/\.(md|markdown|mdx)$/i.test(path)) {
-      void (async () => {
-        if (!runtime.libraryRoot) await openLibrary(path.slice(0, path.lastIndexOf('/')))
-        await openFile(path)
-      })()
+      void openFile(path)
     } else if (/\.(png|jpe?g|gif|webp|svg|avif|bmp)$/i.test(path) && runtime.currentFile) {
       // drop an image straight into the document
       void insertImageFrom(path)
@@ -950,10 +1049,7 @@ async function boot() {
 
   // Files opened from the system file manager, command line, or recent files.
   window.mdr.onOpenPath((p) => {
-    void (async () => {
-      if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
-      await openFile(p)
-    })()
+    void openFile(p)
   })
 
   // 编辑器分隔条不属于面板注册表（编辑区宽度有专用逻辑），单独挂接
@@ -1037,19 +1133,21 @@ async function boot() {
 
   session = await window.mdr.getSession()
   const savedRoot = session.libraryRoot
+  const savedTabs = Array.isArray(session.tabs) ? (session.tabs as string[]).filter((t) => typeof t === 'string') : []
+  const savedActiveIndex = typeof session.activeIndex === 'number' ? session.activeIndex : savedTabs.length - 1
+  const savedLastFile = session.lastFile
+  let restoredLibrary = true
   if (typeof savedRoot === 'string' && savedRoot) {
-    await openLibrary(savedRoot)
+    restoredLibrary = await openLibrary(savedRoot, { restoreSession: true })
   }
   // 恢复上次会话的标签页集合（懒加载：仅激活页读内容）
-  const savedTabs = Array.isArray(session.tabs) ? (session.tabs as string[]).filter((t) => typeof t === 'string') : []
-  if (savedTabs.length) {
-    tabs.restorePaths(savedTabs, typeof session.activeIndex === 'number' ? session.activeIndex : savedTabs.length - 1)
+  if (restoredLibrary && savedTabs.length) {
+    tabs.restorePaths(savedTabs, savedActiveIndex)
     const activePath = tabs.activePath
     if (activePath) await openFile(activePath)
-  } else {
-    const lastFile = session.lastFile
-    if (typeof lastFile === 'string' && lastFile) {
-      await openFile(lastFile)
+  } else if (restoredLibrary) {
+    if (typeof savedLastFile === 'string' && savedLastFile) {
+      await openFile(savedLastFile)
     }
   }
   window.mdr.rendererReady()

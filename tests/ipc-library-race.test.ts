@@ -134,3 +134,78 @@ test('closing while library-open session persistence is pending returns no stale
     assert.deepEqual(api.listNames(), [])
   } finally { paused.restore() }
 })
+
+test('opening a missing path or regular file keeps the current library and durable session', async t => {
+  const { api, invoke, root, a, temporary, session, watchers } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  await until(() => api.resolveName('A') === a, 'The previous library must initialize')
+  assert.equal(await invoke(api.CH.libOpen, path.join(temporary, 'missing')), null)
+  assert.equal(await invoke(api.CH.libOpen, a), null)
+  assert.equal(api.getLibraryRoot(), root)
+  assert.equal(JSON.parse(await fs.readFile(session, 'utf8')).libraryRoot, root)
+  assert.equal(api.resolveName('A'), a)
+  assert.equal(watchers.length, 1); assert.equal(watchers[0].closed, false)
+})
+
+test('a directory read failure keeps the old tree, index, watcher and image access', async t => {
+  const { api, invoke, root, a, temporary, watchers } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  await until(() => api.resolveName('A') === a, 'The old index must finish')
+  await invoke(api.CH.fsRead, a)
+  await fs.writeFile(path.join(root, 'old.png'), 'fixture image bytes')
+  const inaccessible = path.join(temporary, 'inaccessible'); await fs.mkdir(inaccessible)
+  const original = fs.readdir
+  fs.readdir = (async (...args: any[]) => {
+    if (String(args[0]) === inaccessible) throw Object.assign(new Error('Denied'), { code: 'EACCES' })
+    return (original as any)(...args)
+  }) as typeof fs.readdir
+  try {
+    assert.equal(await invoke(api.CH.libOpen, inaccessible), null)
+    assert.equal(api.getLibraryRoot(), root)
+    assert.equal(api.resolveName('A'), a)
+    assert.equal(watchers[0].closed, false)
+    assert.equal((await invoke(api.CH.imageResolve, 'old.png', a)).error, undefined)
+  } finally { fs.readdir = original }
+})
+
+test('failed session persistence cannot partially switch the library or revoke its images', async t => {
+  const { api, invoke, root, a, temporary, session, watchers } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  await until(() => api.resolveName('A') === a, 'The old library must initialize')
+  await invoke(api.CH.fsRead, a)
+  await fs.writeFile(path.join(root, 'old.png'), 'fixture image bytes')
+  const other = path.join(temporary, 'other'); await fs.mkdir(other)
+  await fs.writeFile(path.join(other, 'B.md'), '# B')
+  const original = fs.writeFile
+  fs.writeFile = (async (...args: any[]) => {
+    if (String(args[0]) === session + '.tmp') throw Object.assign(new Error('Disk full'), { code: 'ENOSPC' })
+    return (original as any)(...args)
+  }) as typeof fs.writeFile
+  try {
+    assert.equal(await invoke(api.CH.libOpen, other), null)
+    assert.equal(api.getLibraryRoot(), root)
+    assert.equal(api.resolveName('A'), a)
+    assert.equal(JSON.parse(await fs.readFile(session, 'utf8')).libraryRoot, root)
+    assert.equal(watchers.length, 1); assert.equal(watchers[0].closed, false)
+    assert.equal((await invoke(api.CH.imageResolve, 'old.png', a)).error, undefined)
+  } finally { fs.writeFile = original }
+})
+
+test('a newer failed selection cancels and rolls back an older pending library persistence', async t => {
+  const { api, invoke, root, a, temporary, session } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  await until(() => api.resolveName('A') === a, 'The previous library must finish')
+  const other = path.join(temporary, 'other'); await fs.mkdir(other)
+  await fs.writeFile(path.join(other, 'B.md'), '# B')
+  const paused = await pause('writeFile', session + '.tmp')
+  try {
+    const oldOpening = invoke(api.CH.libOpen, other)
+    await paused.entered
+    assert.equal(await invoke(api.CH.libOpen, path.join(temporary, 'missing')), null)
+    paused.release()
+    assert.equal(await oldOpening, null)
+    assert.equal(api.getLibraryRoot(), root)
+    assert.equal(JSON.parse(await fs.readFile(session, 'utf8')).libraryRoot, root)
+    assert.equal(api.resolveName('A'), a)
+  } finally { paused.restore() }
+})

@@ -45,6 +45,13 @@ export interface Backlink {
   line: number
 }
 
+export interface ImageResolution {
+  url?: string
+  path?: string
+  error?: 'not-found' | 'forbidden' | 'unreadable' | 'invalid'
+  message?: string
+}
+
 // ---------- 通道名 ----------
 
 export const CH = {
@@ -74,6 +81,7 @@ export const CH = {
   fsMkdir: 'fs:mkdir',
   fsExists: 'fs:exists',
   fsCopyImage: 'fs:copyImage',
+  imageResolve: 'image:resolve',
   shellReveal: 'shell:reveal',
   sessionGet: 'session:get',
   sessionSet: 'session:set',

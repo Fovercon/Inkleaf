@@ -5,12 +5,14 @@ import path from 'node:path'
 import chokidar from 'chokidar'
 import { CH, TreeNode, TextHit, ConfirmOptions, FsEvent, TagCount, Backlink } from '../shared/ipc'
 import * as indexService from './index-service'
+import { localAssets } from './local-assets'
 
 export type { TreeNode } from '../shared/ipc'
 
 let libraryRoot: string | null = null
 let watcher: chokidar.FSWatcher | null = null
 let libraryGeneration = 0
+let libraryRequest = 0
 let fileListRevision = 0
 let sessionWrites: Promise<void> = Promise.resolve()
 /** cached flat .md file list for the quick switcher; invalidated on fs events */
@@ -86,7 +88,8 @@ async function readTree(root: string): Promise<TreeNode[]> {
     let entries: fsSync.Dirent[]
     try {
       entries = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
+    } catch (error) {
+      if (dir === root) throw error
       return []
     }
     entries.sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
@@ -165,33 +168,50 @@ export function registerIpc() {
   })
 
   ipcMain.handle(CH.libOpen, async (_e, root: string) => {
-    if (!fsSync.existsSync(root)) return null
-    const generation = ++libraryGeneration
-    fileListRevision++
-    libraryRoot = root
-    fileListCache = null
-    indexService.clearIndex()
-    // tree first so the UI fills fast; the watcher can warm up afterwards
-    const tree = await readTree(root)
-    if (generation !== libraryGeneration) return null
-    void startWatch(root, generation).catch(() => {})
-    void (async () => {
-      let files = await listFiles(root)
-      if (generation !== libraryGeneration) return
-      const loaded = await indexService.loadPersistedIndex(root, files)
-      if (generation !== libraryGeneration) return
-      if (!loaded) {
-        files = await listFiles(root, true)
-        if (generation !== libraryGeneration) return
-        await indexService.buildIndex(root, files)
-      }
-    })().catch(() => {})
-    await patchSession({ libraryRoot: root })
-    if (generation !== libraryGeneration) return null
-    return tree
+    const request = ++libraryRequest
+    try {
+      if (typeof root !== 'string' || !path.isAbsolute(root) || !(await fs.stat(root)).isDirectory()) return null
+      root = path.resolve(root)
+      // Keep the previous library usable until both scanning and persistence succeed.
+      const tree = await readTree(root)
+      if (request !== libraryRequest) return null
+      const transition = sessionWrites.catch(() => {}).then(async () => {
+        if (request !== libraryRequest) return false
+        const saved = await readSessionFromDisk()
+        if (request !== libraryRequest) return false
+        await commitSession({ ...saved, libraryRoot: root })
+        if (request !== libraryRequest) {
+          // An in-flight rename may have completed after cancellation. This queue
+          // restores the current root before any newer transition can persist.
+          await commitSession({ ...saved, libraryRoot })
+          return false
+        }
+        const generation = ++libraryGeneration
+        fileListRevision++
+        libraryRoot = root
+        fileListCache = null
+        indexService.clearIndex()
+        localAssets.setLibraryRoot(root)
+        void startWatch(root, generation).catch(() => {})
+        void (async () => {
+          let files = await listFiles(root)
+          if (generation !== libraryGeneration) return
+          const loaded = await indexService.loadPersistedIndex(root, files)
+          if (generation !== libraryGeneration) return
+          if (!loaded) {
+            files = await listFiles(root, true)
+            if (generation !== libraryGeneration) return
+            await indexService.buildIndex(root, files)
+          }
+        })().catch(() => {})
+        return true
+      })
+      sessionWrites = transition.then(() => {}, () => {})
+      return await transition && request === libraryRequest ? tree : null
+    } catch { return null }
   })
 
-  ipcMain.handle(CH.libTree, () => (libraryRoot ? readTree(libraryRoot) : []))
+  ipcMain.handle(CH.libTree, () => (libraryRoot ? readTree(libraryRoot).catch(() => []) : []))
 
   async function listFiles(root = libraryRoot, fresh = false): Promise<string[]> {
     if (!root || root !== libraryRoot) return []
@@ -259,16 +279,24 @@ export function registerIpc() {
   })
 
   ipcMain.handle(CH.libClose, async () => {
+    libraryRequest++
     libraryGeneration++
     fileListRevision++
     libraryRoot = null
     fileListCache = null
     indexService.clearIndex()
+    localAssets.setLibraryRoot(null)
     await stopWatch()
     await patchSession({ libraryRoot: null })
   })
 
-  ipcMain.handle(CH.fsRead, (_e, p: string) => fs.readFile(p, 'utf8'))
+  ipcMain.handle(CH.fsRead, async (_e, p: string) => {
+    const epoch = localAssets.epoch
+    const content = await fs.readFile(p, 'utf8')
+    await localAssets.registerDocument(p, epoch)
+    return content
+  })
+  ipcMain.handle(CH.imageResolve, (_e, source: string, documentPath: string) => localAssets.resolveImage(source, documentPath))
 
   ipcMain.handle(CH.fsWrite, async (_e, p: string, content: string) => {
     const tmp = p + '.mdr-tmp'

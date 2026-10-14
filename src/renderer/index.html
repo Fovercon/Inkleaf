@@ -46,6 +46,7 @@
     <button id="btn-updates" title="检查更新" aria-label="检查软件更新" class="tb"><svg class="icon"><use href="#i-update"/></svg></button>
   </div>
 </header>
+<div id="library-feedback" role="status" aria-live="polite" hidden></div>
 <div id="workspace">
   <button id="sidebar-expand" title="展开书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="展开书库栏"><svg class="icon"><use href="#i-right"/></svg></button>
   <aside id="sidebar" aria-label="书库">
@@ -65,6 +66,17 @@
   </aside>
   <div class="resizer" id="resizer-sidebar"></div>
   <div id="doc-wrap">
+    <section id="library-empty" aria-label="选择文档">
+      <div class="library-empty-card">
+        <svg class="library-empty-icon" aria-hidden="true"><use href="#i-book"/></svg>
+        <h2 id="library-empty-title">选择一篇文档，开始阅读</h2>
+        <p id="library-empty-description">从左侧选择一篇文档，或新建一页，记录此刻的想法。</p>
+        <div class="empty-actions">
+          <button id="library-new-file" class="primary"><svg class="icon"><use href="#i-plus"/></svg>新建一页</button>
+          <button id="library-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件</button>
+        </div>
+      </div>
+    </section>
     <div id="tabbar" role="tablist" aria-label="打开的文档"></div>
     <div id="doc-body">
       <section id="editor-pane" aria-label="Markdown 编辑器"><div class="pane-heading"><span>编辑</span><small>MARKDOWN</small></div><div id="editor-host"></div></section>

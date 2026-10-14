@@ -6,6 +6,7 @@ import deflistPlugin from 'markdown-it-deflist'
 import hljs from 'highlight.js/lib/common'
 import DOMPurify from 'dompurify'
 import { currentTheme, onThemeChange } from './theme'
+import { localImageMarkdownPlugin, prepareImageMarkup, bindPreviewImages } from './localImages'
 import {
   getMarkdownRevision,
   registerMarkdownPlugin,
@@ -21,6 +22,7 @@ import {
 
 /** 语法层：KaTeX / 任务列表 / 脚注 / 定义列表 / callout / 行号与标题锚点 */
 registerMarkdownPlugin((md) => {
+  md.use(localImageMarkdownPlugin)
   md.use(katexPlugin as never)
   md.use(taskLists as never, { enabled: true, label: true })
   md.use(footnotePlugin as never)
@@ -64,23 +66,11 @@ export function setTaskToggleHandler(fn: (line: number, checked: boolean) => voi
   taskToggleHandler = fn
 }
 
-/** DOM 后处理：图片协议重写 / 外链提示 / 任务复选框回写 */
+const imageSources = new WeakMap<HTMLElement, ReadonlyMap<string, string>>()
+
+/** Native image diagnostics / link hints / checkbox listeners follow external transforms. */
 registerPostProcessor((container, ctx) => {
-  container.querySelectorAll('img').forEach((img) => {
-    const src = img.getAttribute('src') ?? ''
-    if (/^https?:/i.test(src)) {
-      img.loading = 'lazy'
-      img.referrerPolicy = 'no-referrer'
-      return
-    }
-    if (/^(data:|mdasset:)/i.test(src)) return
-    if (!ctx.baseDir) return
-    const clean = decodeURIComponent(src.split('?')[0].split('#')[0])
-    const abs = `${ctx.baseDir}/${clean}`.replace(/\/{2,}/g, '/').replace(/\/$/, '')
-    img.loading = 'lazy'
-    // constant host keeps the URL parser from treating the leading path segment as a host
-    img.src = 'mdasset://local' + abs.split('/').map(encodeURIComponent).join('/')
-  })
+  bindPreviewImages(container, ctx, imageSources.get(container) ?? new Map())
 
   // hover tooltip with the target URL for external links
   container.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
@@ -221,6 +211,7 @@ export function clearPreview(container: HTMLElement) {
   renderSeq++
   last = null
   container.innerHTML = ''
+  imageSources.delete(container)
 }
 
 export async function renderPreview(scroller: HTMLElement, container: HTMLElement, text: string, filePath: string | null) {
@@ -228,13 +219,15 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
   const seq = ++renderSeq
   const big = text.length > 20000
   const t0 = big ? performance.now() : 0
-  const raw = md.render(text)
+  const images = prepareImageMarkup(md.render(text))
+  const raw = images.html
   const t1 = big ? performance.now() : 0
   const html = DOMPurify.sanitize(raw, {
     ADD_ATTR: ['target', 'data-source-line', 'id', 'checked', 'disabled'],
   })
   const t2 = big ? performance.now() : 0
   if (seq !== renderSeq) return // superseded by a newer render
+  imageSources.set(container, images.sources)
   container.innerHTML = html
   const t3 = big ? performance.now() : 0
 
