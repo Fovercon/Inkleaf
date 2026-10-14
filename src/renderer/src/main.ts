@@ -298,16 +298,20 @@ function revealFolderInTree(folder: string) {
   void tree.refresh().then(() => tree.flash(folder))
 }
 
-function setSidebarTab(tab: 'files' | 'recent') {
+function setSidebarTab(tab: 'files' | 'recent' | 'tags') {
   getState().sidebarTab = tab
   saveState()
   $('#tab-files').classList.toggle('active', tab === 'files')
   $('#tab-recent').classList.toggle('active', tab === 'recent')
+  $('#tab-tags').classList.toggle('active', tab === 'tags')
   $('#tab-files').setAttribute('aria-pressed', String(tab === 'files'))
   $('#tab-recent').setAttribute('aria-pressed', String(tab === 'recent'))
+  $('#tab-tags').setAttribute('aria-pressed', String(tab === 'tags'))
   treeHost.style.display = tab === 'files' ? '' : 'none'
   $('#recent-list').classList.toggle('visible', tab === 'recent')
+  $('#tag-list').classList.toggle('visible', tab === 'tags')
   if (tab === 'recent') renderRecent()
+  if (tab === 'tags') void renderTags()
 }
 
 function renderRecent() {
@@ -334,6 +338,58 @@ function renderRecent() {
     item.addEventListener('click', () => void openFile(p))
     host.appendChild(item)
   })
+}
+
+/** 标签面板：聚合标签 → 点击展开该标签下的文档 */
+async function renderTags(selectedTag?: string) {
+  const host = $('#tag-list')
+  host.innerHTML = ''
+  const root = runtime.libraryRoot
+  const tags = await window.mdr.indexTags().catch(() => [])
+  if (!tags.length) {
+    const empty = document.createElement('div')
+    empty.className = 'recent-empty'
+    empty.textContent = '暂无标签（在文档里写 #标签 或 frontmatter tags）'
+    host.appendChild(empty)
+    return
+  }
+  if (!selectedTag) {
+    for (const { tag, count } of tags) {
+      const item = document.createElement('div')
+      item.className = 'tag-item'
+      item.dataset.tag = tag
+      item.innerHTML = `<span class="tg-name"></span><span class="tg-count">${count}</span>`
+      ;(item.querySelector('.tg-name') as HTMLElement).textContent = tag
+      item.addEventListener('click', () => void renderTags(tag))
+      host.appendChild(item)
+    }
+    return
+  }
+  // selected: back button + files under this tag
+  const back = document.createElement('div')
+  back.className = 'tag-back'
+  back.textContent = '‹ 全部标签'
+  back.addEventListener('click', () => void renderTags())
+  host.appendChild(back)
+  const files = await window.mdr.indexFilesByTag(selectedTag).catch(() => [])
+  if (!files.length) {
+    const empty = document.createElement('div')
+    empty.className = 'recent-empty'
+    empty.textContent = '该标签下暂无文档'
+    host.appendChild(empty)
+    return
+  }
+  for (const p of files) {
+    const item = document.createElement('div')
+    item.className = 'tagfile-item'
+    const name = p.split('/').pop() ?? p
+    const dir = root && p.startsWith(root + '/') ? p.slice(root.length + 1, p.lastIndexOf('/')) : ''
+    item.innerHTML = `<div class="ri-name"></div><div class="ri-dir"></div>`
+    ;(item.querySelector('.ri-name') as HTMLElement).textContent = name
+    ;(item.querySelector('.ri-dir') as HTMLElement).textContent = dir
+    item.addEventListener('click', () => void openFile(p))
+    host.appendChild(item)
+  }
 }
 
 function setupBackToTop() {
@@ -647,6 +703,7 @@ async function boot() {
 
   $('#tab-files').addEventListener('click', () => setSidebarTab('files'))
   $('#tab-recent').addEventListener('click', () => setSidebarTab('recent'))
+  $('#tab-tags').addEventListener('click', () => setSidebarTab('tags'))
 
   // test hook: lets the automated harness open the palette without native menu accelerators
   document.addEventListener('mdr-test-palette', (e) => {

@@ -16,7 +16,7 @@ export interface UiState {
   expandedDirs: string[]
   recent: string[]
   scrollByPath: Record<string, number>
-  sidebarTab: 'files' | 'recent'
+  sidebarTab: 'files' | 'recent' | 'tags'
 }
 
 const KEY = 'mdr.ui.v1'
@@ -47,7 +47,7 @@ function load(): UiState {
       expandedDirs: p.expandedDirs ?? [],
       recent: p.recent ?? [],
       scrollByPath: p.scrollByPath ?? {},
-      sidebarTab: p.sidebarTab === 'recent' ? 'recent' : 'files',
+      sidebarTab: p.sidebarTab === 'recent' || p.sidebarTab === 'tags' ? p.sidebarTab : 'files',
       fontScale: typeof p.fontScale === 'number' ? Math.min(1.6, Math.max(0.8, p.fontScale)) : 1,
       focusMode: p.focusMode === true,
       typewriter: p.typewriter === true,

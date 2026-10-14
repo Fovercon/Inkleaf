@@ -629,6 +629,33 @@ async function createWindow() {
         `)
         const bl = JSON.parse(backlinkCheck)
         console.log(`[backlink-check] pane=${bl.paneExists} count=${bl.count} readme=${bl.mentionsReadme} jump=${bl.jumped} ${bl.paneExists && bl.count >= 1 && bl.mentionsReadme && bl.jumped ? 'OK' : 'FAIL'}`)
+        // tag panel check: third sidebar tab lists index tags, click filters to files
+        const tagCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              document.getElementById('tab-tags')?.click();
+              await new Promise(r => setTimeout(r, 500));
+              const pane = document.getElementById('tag-list');
+              const items = pane ? pane.querySelectorAll('.tag-item') : [];
+              const texts = [...items].map(i => i.dataset.tag ?? '');
+              const hasTravel = texts.includes('旅行');
+              let filtered = false;
+              if (hasTravel) {
+                [...items].find(i => i.dataset.tag === '旅行')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+                await new Promise(r => setTimeout(r, 600));
+                const files = [...document.querySelectorAll('#tag-list .tagfile-item')].map(f => f.textContent ?? '');
+                filtered = files.some(t => t.includes('旅行计划'));
+              }
+              document.getElementById('tab-files')?.click();
+              await new Promise(r => setTimeout(r, 300));
+              return JSON.stringify({paneExists: !!pane, count: items.length, hasTravel, filtered, texts: texts.slice(0, 6)});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        const tg = JSON.parse(tagCheck)
+        console.log(`[tag-check] pane=${tg.paneExists} count=${tg.count} travel=${tg.hasTravel} filtered=${tg.filtered} tags=${JSON.stringify(tg.texts)} ${tg.paneExists && tg.hasTravel && tg.filtered ? 'OK' : 'FAIL'}`)
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {
