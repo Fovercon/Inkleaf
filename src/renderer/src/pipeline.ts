@@ -11,6 +11,8 @@ import type MarkdownIt from 'markdown-it'
 export interface RenderContext {
   filePath: string | null
   baseDir: string | null
+  /** Host-only cancellation check; never sent to an external plugin. */
+  isCurrent?: () => boolean
 }
 
 export type MarkdownPluginHook = (md: MarkdownIt) => void
@@ -24,6 +26,7 @@ export function getMarkdownRevision(): number {
   return markdownRevision
 }
 const postProcessors: PostProcessorHook[] = []
+let earlyProcessorCount = 0
 const codeBlockProcessors = new Map<string, CodeBlockProcessor>()
 
 export function registerMarkdownPlugin(fn: MarkdownPluginHook): void {
@@ -31,20 +34,24 @@ export function registerMarkdownPlugin(fn: MarkdownPluginHook): void {
   markdownRevision++
 }
 
-export function registerPostProcessor(fn: PostProcessorHook): void {
-  postProcessors.push(fn)
+export function registerPostProcessor(fn: PostProcessorHook, beforeBuiltins = false): void {
+  if (beforeBuiltins) postProcessors.splice(earlyProcessorCount++, 0, fn)
+  else postProcessors.push(fn)
 }
 
 export function registerCodeBlockProcessor(lang: string, fn: CodeBlockProcessor): void {
+  if (codeBlockProcessors.has(lang.toLowerCase())) throw new Error(`代码块处理器已注册：${lang}`)
   codeBlockProcessors.set(lang.toLowerCase(), fn)
 }
 
-export function unregisterCodeBlockProcessor(lang: string): void {
-  codeBlockProcessors.delete(lang.toLowerCase())
+export function unregisterCodeBlockProcessor(lang: string, expected?: CodeBlockProcessor): void {
+  if (!expected || codeBlockProcessors.get(lang.toLowerCase()) === expected) codeBlockProcessors.delete(lang.toLowerCase())
 }
 
 export function applyMarkdownPlugins(md: MarkdownIt): void {
-  for (const fn of markdownPlugins) fn(md)
+  for (const fn of [...markdownPlugins]) {
+    try { fn(md) } catch (err) { console.error('[pipeline] Markdown 扩展失败', err) }
+  }
 }
 
 export function listPostProcessors(): PostProcessorHook[] {
@@ -65,5 +72,8 @@ export function removeMarkdownPlugin(fn: MarkdownPluginHook): void {
 
 export function removePostProcessor(fn: PostProcessorHook): void {
   const i = postProcessors.indexOf(fn)
-  if (i >= 0) postProcessors.splice(i, 1)
+  if (i >= 0) {
+    if (i < earlyProcessorCount) earlyProcessorCount--
+    postProcessors.splice(i, 1)
+  }
 }

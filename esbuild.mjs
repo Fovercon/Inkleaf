@@ -33,6 +33,8 @@ await build({
 })
 
 await cp('src/renderer/index.html', path.join(OUT, 'renderer', 'index.html'))
+await cp('src/renderer/plugin-sandbox.html', path.join(OUT, 'renderer', 'plugin-sandbox.html'))
+await cp('src/renderer/plugin-sandbox.mjs', path.join(OUT, 'renderer', 'plugin-sandbox.mjs'))
 await cp('build/inkleaf-icon.png', path.join(OUT, 'icon.png'))
 if (process.platform === 'darwin') {
   execFileSync('/usr/bin/xcrun', ['clang', '-arch', 'arm64', '-mmacosx-version-min=11.0', '-O2', '-Wall', '-Wextra', '-Wno-deprecated-declarations',

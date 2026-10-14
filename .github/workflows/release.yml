@@ -78,7 +78,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:updates
       - run: npm run test:platform
+      - run: npm run test:regressions
+      - run: npm run test:doc-session-ui
+      - run: npm run test:plugin-dom-ui
       - run: npm run release:build -- --arch arm64
+      - run: npm run test:ui-failure
       - name: Verify macOS archive
         run: |
           cd dist

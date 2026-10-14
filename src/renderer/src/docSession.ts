@@ -10,6 +10,9 @@ export interface DocSession {
   editorJSON: unknown
   scrollY: number
   dirty: boolean
+  /** Last disk content used to build this editor state. */
+  diskContent: string | null
+  stale: boolean
 }
 
 export class TabManager {
@@ -28,7 +31,7 @@ export class TabManager {
   }
 
   get activePath(): string | null {
-    return this.active >= 0 ? this.tabs[this.active].path : null
+    return this.get()?.path ?? null
   }
 
   indexOf(path: string): number {
@@ -37,31 +40,50 @@ export class TabManager {
 
   /** 捕获当前 tab 的可变状态（切换/关闭前调用） */
   capture(editorJSON: unknown, scrollY: number, dirty: boolean): void {
-    if (this.active < 0) return
-    const t = this.tabs[this.active]
+    const t = this.get()
+    if (!t) return
     t.editorJSON = editorJSON
     t.scrollY = scrollY
     t.dirty = dirty
   }
 
+  capturePath(path: string, editorJSON: unknown, scrollY: number, dirty: boolean): void {
+    const t = this.get(this.indexOf(path))
+    if (!t) return
+    t.editorJSON = editorJSON
+    t.scrollY = scrollY
+    t.dirty = dirty
+  }
+
+  all(): readonly DocSession[] {
+    return [...this.tabs]
+  }
+
+  private create(path: string): DocSession {
+    return { path, editorJSON: null, scrollY: 0, dirty: false, diskContent: null, stale: false }
+  }
+
   /** 激活已有 tab 或新建；返回需要加载内容的 tab（懒加载） */
   activate(path: string, opts?: { newTab?: boolean }): DocSession {
     const existing = this.indexOf(path)
-    if (existing >= 0 && !opts?.newTab) {
+    // A file has one buffer, even when "open in a new tab" targets it again.
+    if (existing >= 0) {
       this.active = existing
       this.onTabsChanged?.()
       return this.tabs[existing]
     }
-    if (this.tabs.length >= this.limit) {
-      // 上限：淘汰最老的非激活 tab
-      const victim = this.tabs.findIndex((t, i) => i !== this.active)
-      if (victim >= 0) this.tabs.splice(victim, 1)
-    }
-    const session: DocSession = { path, editorJSON: null, scrollY: 0, dirty: false }
+    const session = this.create(path)
     if (!opts?.newTab && this.active >= 0) {
       // 默认打开 = 替换当前标签（Obsidian 同款语义）
+      if (this.get()?.dirty) throw new Error('请先保存当前标签页，再打开其他文件')
       this.tabs[this.active] = session
     } else {
+      if (this.tabs.length >= this.limit) {
+        const victim = this.tabs.findIndex((t, i) => i !== this.active && !t.dirty)
+        if (victim < 0) throw new Error('标签页已达上限，请先保存或关闭一个标签页')
+        this.tabs.splice(victim, 1)
+        if (victim < this.active) this.active--
+      }
       const at = this.active >= 0 ? this.active + 1 : this.tabs.length
       this.tabs.splice(at, 0, session)
     }
@@ -77,15 +99,48 @@ export class TabManager {
   /** 关闭指定 tab；返回应激活的 tab（可能为 null = 全部关闭） */
   close(i = this.active): DocSession | null {
     if (i < 0 || i >= this.tabs.length) return null
+    if (this.tabs[i].dirty) throw new Error('标签页尚未保存，无法关闭')
+    const current = this.get()
     this.tabs.splice(i, 1)
     if (this.tabs.length === 0) {
       this.active = -1
       this.onTabsChanged?.()
       return null
     }
-    this.active = Math.min(i, this.tabs.length - 1)
+    this.active = current ? this.tabs.indexOf(current) : -1
+    if (this.active < 0) this.active = Math.min(i, this.tabs.length - 1)
     this.onTabsChanged?.()
     return this.tabs[this.active]
+  }
+
+  rename(oldPath: string, newPath: string, directory = false): void {
+    let changed = false
+    for (const tab of this.tabs) {
+      if (tab.path === oldPath || directory && tab.path.startsWith(oldPath + '/')) {
+        tab.path = newPath + tab.path.slice(oldPath.length)
+        changed = true
+      }
+    }
+    if (changed) this.onTabsChanged?.()
+  }
+
+  invalidate(path: string, directory = false): void {
+    for (const tab of this.tabs) {
+      if (tab.path !== path && !(directory && tab.path.startsWith(path + '/'))) continue
+      tab.stale = true
+      if (!tab.dirty) tab.editorJSON = null
+    }
+  }
+
+  removePath(path: string, directory = false): DocSession | null {
+    const current = this.get()
+    const oldActive = this.active
+    this.tabs = this.tabs.filter(tab => tab.path !== path && !(directory && tab.path.startsWith(path + '/')))
+    this.active = current ? this.tabs.indexOf(current) : -1
+    if (this.active < 0 && this.tabs.length) this.active = Math.min(Math.max(oldActive, 0), this.tabs.length - 1)
+    if (!this.tabs.length) this.active = -1
+    this.onTabsChanged?.()
+    return this.get()
   }
 
   /** 会话持久化用的纯路径列表 */
@@ -94,8 +149,11 @@ export class TabManager {
   }
 
   restorePaths(paths: string[], activeIndex: number): void {
-    this.tabs = paths.map((p) => ({ path: p, editorJSON: null, scrollY: 0, dirty: false }))
-    this.active = this.tabs.length ? Math.max(0, Math.min(activeIndex, this.tabs.length - 1)) : -1
+    const unique = [...new Set(paths.filter(path => typeof path === 'string' && path))]
+    const requested = Number.isInteger(activeIndex) ? Math.max(0, Math.min(activeIndex, unique.length - 1)) : unique.length - 1
+    const start = Math.max(0, Math.min(requested, unique.length - this.limit))
+    this.tabs = unique.slice(start, start + this.limit).map(path => this.create(path))
+    this.active = this.tabs.length ? requested - start : -1
     this.onTabsChanged?.()
   }
 }

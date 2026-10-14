@@ -16,12 +16,18 @@
 npm install       # 安装依赖（.npmrc 已配置国内镜像）
 npm start         # 开发模式启动
 npm run test:ui   # 使用独立配置和测试书库副本，回归验证并截图到 verify/
+npm run test:regressions # 文档保存、索引安全、插件生命周期与异步预览回归
+npm run test:doc-session-ui # 独立界面验证标签恢复、文件变化和保存失败
+npm run test:plugin-dom-ui # 真实 DOM 验证插件后处理、公式布局和交互
+npm run test:ui-failure # 人为制造失败，确认测试返回非零而不会报告成功
 npm run package   # 生成图标并打包 dist/mac-arm64/Inkleaf.app
 npm run release:build # 构建 app，以及供软件内更新使用的 ZIP 和 SHA-256 文件
 npm run release:linux # 在原生 Linux x64/arm64 上构建 AppImage、deb 与 SHA-256 文件
 ```
 
 把 `Inkleaf.app` 拖入 `/Applications` 即可日常使用；Finder 中右键任意 `.md` 文件 → 打开方式 → 墨页 · Inkleaf。
+
+Linux 的界面测试需要桌面会话或 `xvfb-run`。外部插件在独立沙箱 iframe 中运行，目前开放命令、DOM 后处理和代码块处理器；直接访问宿主 DOM、文件接口、MarkdownIt 实例和同步 `when` 的旧插件需要改用隔离接口。内置阅读、编辑和 callout 功能继续使用应用自带的实现。
 
 ### Linux 安装
 

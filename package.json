@@ -18,7 +18,11 @@
     "icon": "node scripts/make-icon.mjs",
     "test:updates": "node scripts/test-updater.mjs",
     "test:platform": "node scripts/test-platform.mjs",
-    "test:platform-ui": "node scripts/test-platform-ui.mjs"
+    "test:platform-ui": "node scripts/test-platform-ui.mjs",
+    "test:regressions": "node scripts/test-unit.mjs tests/index-service.test.ts tests/ipc-library-race.test.ts tests/doc-session.test.ts tests/plugins-security.test.ts tests/plugins-path.test.ts tests/preview-security.test.ts",
+    "test:doc-session-ui": "node tests/doc-session-renderer.mjs",
+    "test:plugin-dom-ui": "node tests/plugin-dom-renderer.mjs",
+    "test:ui-failure": "node scripts/test-ui-failure.mjs"
   },
   "build": {
     "appId": "com.fovercon.inkleaf",

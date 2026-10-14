@@ -27,7 +27,19 @@ export class FileTree {
   onOpenFile: ((path: string, newTab?: boolean) => void) | null = null
   onCreated: ((path: string) => void) | null = null
   onRenamed: ((info: { oldPath: string; newPath: string; isDir: boolean }) => void) | null = null
-  onDeleted: ((path: string) => void) | null = null
+  onDeleted: ((path: string) => void | Promise<void>) | null = null
+  /** The document coordinator saves and pauses editing for the whole filesystem transaction. */
+  onMutate: ((operation: () => Promise<void>) => Promise<void>) | null = null
+
+  private async mutate(operation: () => Promise<void>) {
+    try {
+      if (this.onMutate) await this.onMutate(operation)
+      else await operation()
+    } catch (error) {
+      await window.mdr.confirm({ title: '文件操作未完成', message: error instanceof Error ? error.message : String(error), okLabel: '知道了' })
+      await this.refresh()
+    }
+  }
 
   constructor(private host: HTMLElement) {
     document.addEventListener('click', () => this.hideMenu())
@@ -245,7 +257,10 @@ export class FileTree {
     input.className = 'tree-input'
     input.type = 'text'
     input.value = oldName
+    let committed = false
     const commit = () => {
+      if (committed) return
+      committed = true
       const name = input.value.trim()
       this.editing = null
       if (name && name !== oldName) void this.applyRename(oldPath, name)
@@ -255,6 +270,7 @@ export class FileTree {
       e.stopPropagation()
       if (e.key === 'Enter') commit()
       if (e.key === 'Escape') {
+        committed = true
         this.editing = null
         this.render()
       }
@@ -276,7 +292,10 @@ export class FileTree {
     input.type = 'text'
     input.placeholder = kind === 'dir' ? '文件夹名称' : '文件名称（.md）'
     wrap.appendChild(input)
+    let committed = false
     const commit = () => {
+      if (committed) return
+      committed = true
       const name = input.value.trim()
       this.editing = null
       if (name) void this.applyCreate(dir, kind, name)
@@ -286,6 +305,7 @@ export class FileTree {
       e.stopPropagation()
       if (e.key === 'Enter') commit()
       if (e.key === 'Escape') {
+        committed = true
         this.editing = null
         this.render()
       }
@@ -296,6 +316,10 @@ export class FileTree {
   }
 
   private async applyRename(oldPath: string, name: string) {
+    await this.mutate(() => this.renameNow(oldPath, name))
+  }
+
+  private async renameNow(oldPath: string, name: string) {
     const isDir = this.findNode(oldPath)?.type === 'dir'
     const finalName = !isDir && !/\.(md|markdown|mdx)$/i.test(name) ? `${name}.md` : name
     const dir = oldPath.slice(0, oldPath.lastIndexOf('/'))
@@ -318,6 +342,10 @@ export class FileTree {
 
   /** drag-and-drop: move a file/folder into the target directory */
   private async applyMove(src: string, targetDir: string) {
+    await this.mutate(() => this.moveNow(src, targetDir))
+  }
+
+  private async moveNow(src: string, targetDir: string) {
     if (src === targetDir || targetDir.startsWith(src + '/')) return // cannot move into itself
     const name = src.split('/').pop() ?? src
     const newPath = `${targetDir}/${name}`
@@ -363,9 +391,11 @@ export class FileTree {
       okLabel: '移到废纸篓',
     })
     if (!ok) return
-    await window.mdr.trash(n.path)
-    this.onDeleted?.(n.path)
-    await this.refresh()
+    await this.mutate(async () => {
+      await window.mdr.trash(n.path)
+      await this.onDeleted?.(n.path)
+      await this.refresh()
+    })
   }
 
   // ---------------- context menus ----------------

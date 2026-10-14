@@ -53,6 +53,7 @@ jobs:
           npm run typecheck
           npm run test:updates
           npm run test:platform
+          npm run test:regressions
 
       - name: Exercise real Electron UI under Xvfb with sandbox enabled
         timeout-minutes: 5
@@ -60,6 +61,18 @@ jobs:
         run: |
           mkdir -p verify
           MDR_TEST=1 MDR_ROUND="linux-${{ matrix.arch }}-development" bash scripts/run-linux-ui.sh "verify/linux-${{ matrix.arch }}-development.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:ui -- --disable-gpu
+
+      - name: Verify a false UI check fails after normal quit
+        timeout-minutes: 4
+        run: INKLEAF_UI_SUCCESS_MARKER='[ui-failure-check] passed' bash scripts/run-linux-ui.sh "verify/linux-${{ matrix.arch }}-ui-failure.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:ui-failure
+
+      - name: Verify document save, tab and session recovery
+        timeout-minutes: 4
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:doc-session-ui
+
+      - name: Verify plugin HTML preserves layout and interactions
+        timeout-minutes: 4
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:plugin-dom-ui
 
       - name: Verify platform shortcuts and window chrome
         run: INKLEAF_UI_SUCCESS_MARKER='"passed":true' bash scripts/run-linux-ui.sh "verify/linux-${{ matrix.arch }}-platform-ui.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:platform-ui

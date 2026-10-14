@@ -10,10 +10,14 @@ export type { TreeNode } from '../shared/ipc'
 
 let libraryRoot: string | null = null
 let watcher: chokidar.FSWatcher | null = null
+let libraryGeneration = 0
+let fileListRevision = 0
+let sessionWrites: Promise<void> = Promise.resolve()
 /** cached flat .md file list for the quick switcher; invalidated on fs events */
-let fileListCache: { root: string; files: string[] } | null = null
+let fileListCache: { root: string; generation: number; revision: number; files: string[] } | null = null
 
 export const getLibraryRoot = () => libraryRoot
+export const flushSessionWrites = () => sessionWrites.catch(() => {})
 
 function broadcast(channel: string, payload?: unknown) {
   BrowserWindow.getAllWindows().forEach((w) => w.webContents.send(channel, payload))
@@ -21,7 +25,7 @@ function broadcast(channel: string, payload?: unknown) {
 
 const sessionPath = () => path.join(app.getPath('userData'), 'session.json')
 
-async function readSession(): Promise<Record<string, unknown>> {
+async function readSessionFromDisk(): Promise<Record<string, unknown>> {
   try {
     return JSON.parse(await fs.readFile(sessionPath(), 'utf8'))
   } catch {
@@ -29,10 +33,23 @@ async function readSession(): Promise<Record<string, unknown>> {
   }
 }
 
-async function writeSession(s: Record<string, unknown>) {
+async function readSession(): Promise<Record<string, unknown>> {
+  await sessionWrites.catch(() => {})
+  return readSessionFromDisk()
+}
+
+async function commitSession(s: Record<string, unknown>) {
   await fs.mkdir(path.dirname(sessionPath()), { recursive: true })
-  await fs.writeFile(sessionPath(), JSON.stringify(s, null, 2))
+  const temporary = sessionPath() + '.tmp'
+  await fs.writeFile(temporary, JSON.stringify(s, null, 2), { mode: 0o600 })
+  await fs.rename(temporary, sessionPath())
   void rebuildDockMenu()
+}
+
+async function writeSession(s: Record<string, unknown>) {
+  const snapshot = JSON.parse(JSON.stringify(s)) as Record<string, unknown>
+  sessionWrites = sessionWrites.catch(() => {}).then(() => commitSession(snapshot))
+  return sessionWrites
 }
 
 /** macOS dock menu: open actions + the five most recent files */
@@ -56,9 +73,12 @@ export async function rebuildDockMenu() {
 }
 
 async function patchSession(patch: Record<string, unknown>) {
-  const s = await readSession()
-  Object.assign(s, patch)
-  await writeSession(s)
+  sessionWrites = sessionWrites.catch(() => {}).then(async () => {
+    const s = await readSessionFromDisk()
+    Object.assign(s, patch)
+    await commitSession(s)
+  })
+  return sessionWrites
 }
 
 async function readTree(root: string): Promise<TreeNode[]> {
@@ -89,14 +109,17 @@ async function readTree(root: string): Promise<TreeNode[]> {
   return walk(root)
 }
 
-async function startWatch(root: string) {
+async function startWatch(root: string, generation: number) {
   await stopWatch()
+  if (generation !== libraryGeneration || libraryRoot !== root) return
   watcher = chokidar.watch(root, {
     ignored: /(^|[/\\])\.|node_modules/,
     ignoreInitial: true,
     awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 60 },
   })
   const emit = (event: string) => (p: string) => {
+    if (generation !== libraryGeneration || libraryRoot !== root) return
+    fileListRevision++
     fileListCache = null
     if (event === 'unlink' || event === 'unlinkDir') indexService.unindexPath(p)
     else void indexService.indexFile(p)
@@ -107,10 +130,9 @@ async function startWatch(root: string) {
 }
 
 export async function stopWatch() {
-  if (watcher) {
-    await watcher.close().catch(() => {})
-    watcher = null
-  }
+  const current = watcher
+  watcher = null
+  if (current) await current.close().catch(() => {})
 }
 
 export function registerIpc() {
@@ -144,43 +166,61 @@ export function registerIpc() {
 
   ipcMain.handle(CH.libOpen, async (_e, root: string) => {
     if (!fsSync.existsSync(root)) return null
+    const generation = ++libraryGeneration
+    fileListRevision++
     libraryRoot = root
+    fileListCache = null
+    indexService.clearIndex()
     // tree first so the UI fills fast; the watcher can warm up afterwards
     const tree = await readTree(root)
-    void startWatch(root).catch(() => {})
+    if (generation !== libraryGeneration) return null
+    void startWatch(root, generation).catch(() => {})
     void (async () => {
-      if (!(await indexService.loadPersistedIndex(root))) {
-        await indexService.buildIndex(root, await listFiles())
+      let files = await listFiles(root)
+      if (generation !== libraryGeneration) return
+      const loaded = await indexService.loadPersistedIndex(root, files)
+      if (generation !== libraryGeneration) return
+      if (!loaded) {
+        files = await listFiles(root, true)
+        if (generation !== libraryGeneration) return
+        await indexService.buildIndex(root, files)
       }
-    })()
+    })().catch(() => {})
     await patchSession({ libraryRoot: root })
+    if (generation !== libraryGeneration) return null
     return tree
   })
 
   ipcMain.handle(CH.libTree, () => (libraryRoot ? readTree(libraryRoot) : []))
 
-  async function listFiles(): Promise<string[]> {
-    const root = libraryRoot
-    if (!root) return []
-    if (fileListCache && fileListCache.root === root) return fileListCache.files
-    const files: string[] = []
-    const walk = async (dir: string) => {
-      let entries: fsSync.Dirent[]
-      try {
-        entries = await fs.readdir(dir, { withFileTypes: true })
-      } catch {
-        return
+  async function listFiles(root = libraryRoot, fresh = false): Promise<string[]> {
+    if (!root || root !== libraryRoot) return []
+    const generation = libraryGeneration
+    while (generation === libraryGeneration && root === libraryRoot) {
+      const revision = fileListRevision
+      if (!fresh && fileListCache?.root === root && fileListCache.generation === generation && fileListCache.revision === revision) return fileListCache.files
+      const files: string[] = []
+      const walk = async (dir: string) => {
+        let entries: fsSync.Dirent[]
+        try {
+          entries = await fs.readdir(dir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const e of entries) {
+          if (e.name.startsWith('.') || e.name === 'node_modules') continue
+          const p = path.join(dir, e.name)
+          if (e.isDirectory()) await walk(p)
+          else if (e.isFile() && /\.(md|markdown|mdx)$/i.test(e.name)) files.push(p)
+        }
       }
-      for (const e of entries) {
-        if (e.name.startsWith('.') || e.name === 'node_modules') continue
-        const p = path.join(dir, e.name)
-        if (e.isDirectory()) await walk(p)
-        else if (e.isFile() && /\.(md|markdown|mdx)$/i.test(e.name)) files.push(p)
-      }
+      await walk(root)
+      if (generation !== libraryGeneration || root !== libraryRoot) return []
+      if (revision !== fileListRevision) continue
+      fileListCache = { root, generation, revision, files }
+      return files
     }
-    await walk(root)
-    fileListCache = { root, files }
-    return files
+    return []
   }
 
   ipcMain.handle(CH.libListFiles, () => listFiles())
@@ -219,9 +259,12 @@ export function registerIpc() {
   })
 
   ipcMain.handle(CH.libClose, async () => {
-    await stopWatch()
+    libraryGeneration++
+    fileListRevision++
     libraryRoot = null
+    fileListCache = null
     indexService.clearIndex()
+    await stopWatch()
     await patchSession({ libraryRoot: null })
   })
 

@@ -3,8 +3,8 @@ import path from 'node:path'
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import { pathToFileURL } from 'node:url'
-import { registerIpc, getLibraryRoot, rebuildDockMenu, stopWatch } from './ipc'
-import { registerPluginIpc, pluginsRoot } from './plugins-host'
+import { registerIpc, getLibraryRoot, rebuildDockMenu, stopWatch, flushSessionWrites } from './ipc'
+import { registerPluginIpc, resolvePluginFile } from './plugins-host'
 import { initializeUpdater } from './updater'
 import { markdownFromArguments } from './openPath'
 import { appImageTarget } from './linuxAppImage'
@@ -12,6 +12,7 @@ import { appImageTarget } from './linuxAppImage'
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
   { scheme: 'mdasset', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: 'inkplug', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ])
 
 const RENDERER_ROOT = path.join(__dirname, 'renderer')
@@ -43,7 +44,7 @@ app.on('before-quit', event => {
   if (closingResources) return
   closingResources = true
   if (process.env.MDR_TEST) console.log('[quit-check] stopping file watcher')
-  void stopWatch().finally(() => {
+  void Promise.all([stopWatch(), flushSessionWrites()]).finally(() => {
     resourcesClosed = true
     if (process.env.MDR_TEST) console.log('[quit-check] watcher stopped')
     app.quit()
@@ -126,15 +127,24 @@ if (!gotLock) {
       }
     })
 
-    // 插件目录服务：inkplug://<dir>/<file> -> userData/plugins/<dir>/<file>
-    protocol.handle('inkplug', (request) => {
-      const u = new URL(request.url)
-      // host 段即插件目录名：inkplug://<dir>/<file>
-      const rel = decodeURIComponent(u.host) + u.pathname
-      const base = pluginsRoot()
-      const abs = path.resolve(base, rel)
-      if (!abs.startsWith(base + path.sep)) return new Response('forbidden', { status: 403 })
-      return net.fetch(pathToFileURL(abs).toString())
+    // External modules are served only into opaque sandbox frames. No host
+    // renderer script permission or preload bridge is granted to plugin code.
+    protocol.handle('inkplug', async (request) => {
+      try {
+        const u = new URL(request.url)
+        const bootstrap = u.host === 'sandbox' && !u.username && !u.password && !u.search && !u.hash
+          ? { '/index.html': 'plugin-sandbox.html', '/bootstrap.mjs': 'plugin-sandbox.mjs' }[u.pathname] : undefined
+        const abs = bootstrap ? path.join(RENDERER_ROOT, bootstrap) : await resolvePluginFile(request.url)
+        if (!abs) return new Response('forbidden', { status: 403 })
+        const info = await fsp.stat(abs)
+        if (!info.isFile() || info.size > 4 * 1024 * 1024) return new Response('forbidden', { status: 403 })
+        return new Response(new Uint8Array(await fsp.readFile(abs)), { headers: {
+          'content-type': bootstrap === 'plugin-sandbox.html' ? 'text/html; charset=utf-8'
+            : path.extname(abs).toLowerCase() === '.json' ? 'application/json' : 'text/javascript; charset=utf-8',
+          'access-control-allow-origin': '*',
+          'cross-origin-resource-policy': 'cross-origin',
+        } })
+      } catch { return new Response('not found', { status: 404 }) }
     })
     registerIpc()
     registerPluginIpc()
@@ -203,7 +213,18 @@ async function createWindow() {
     const round = process.env.MDR_ROUND ?? '0'
     setTimeout(async () => {
       let failed = false
+      const injectedCheck = process.env.MDR_TEST_FAIL_CHECK
+      const assertUiCheck = (name: string, passed: unknown, details: unknown): void => {
+        if (injectedCheck === name) {
+          console.log(`[ui-failure-injection] ${name}`)
+          passed = false
+        }
+        if (passed !== true) throw new Error(`[ui-check-failed] ${name}: ${JSON.stringify(details)}`)
+      }
       try {
+        if (injectedCheck && !['render', 'focus', 'index', 'wikilink', 'backlink', 'tag', 'tab', 'completion', 'plugin', 'stability', 'regex'].includes(injectedCheck)) {
+          throw new Error('Unknown MDR_TEST_FAIL_CHECK selector')
+        }
         const expectedPlatform = process.platform
         const expectedShortcut = process.platform === 'darwin' ? '⌘O' : 'Ctrl+O'
         const platformOk = await win.webContents.executeJavaScript(`(() => {
@@ -545,6 +566,7 @@ async function createWindow() {
         `)
         const rc = JSON.parse(renderCheck)
         console.log(`[render-check] callout=${rc.callout} title=${rc.title} warning=${rc.warning} footnote=${rc.footnote}/${rc.footnotes} deflist=${rc.deflist} mermaid=${rc.mermaid} ${rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist && rc.mermaid >= 2 ? 'OK' : 'FAIL'}`)
+        assertUiCheck('render', rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist && rc.mermaid >= 2, rc)
         // focus & typewriter mode check
         const focusCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -558,6 +580,8 @@ async function createWindow() {
           })()
         `)
         console.log(`[focus-check] ${focusCheck}`)
+        const fc = JSON.parse(focusCheck)
+        assertUiCheck('focus', fc.focus && fc.typewriter, fc)
         // document index check: tags / wikilinks / backlinks
         const indexCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -582,6 +606,7 @@ async function createWindow() {
         const ic = JSON.parse(indexCheck)
         const icOk = ic.hasTravel && ic.hasYunnan && ic.hasBudget && ic.backlinks >= 1 && ic.resolveOk
         console.log(`[index-check] travel=${ic.hasTravel} yunnan=${ic.hasYunnan} budget=${ic.hasBudget} backlinks=${ic.backlinks}(${ic.backlinkFrom}) resolve=${ic.resolveOk} ${icOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('index', icOk, ic)
         // wikilink check: render / click-to-open / hover preview card
         const wikilinkCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -619,6 +644,7 @@ async function createWindow() {
         `)
         const wl = JSON.parse(wikilinkCheck)
         console.log(`[wikilink-check] count=${wl.count} rendered=${wl.rendered} opened=${wl.opened} hoverCard=${wl.hovered} ${wl.rendered && wl.opened && wl.hovered ? 'OK' : 'FAIL'}`)
+        assertUiCheck('wikilink', wl.rendered && wl.opened && wl.hovered, wl)
         // backlink panel check: open 旅行计划 (linked from README), panel lists the reference
         const backlinkCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -642,6 +668,7 @@ async function createWindow() {
         `)
         const bl = JSON.parse(backlinkCheck)
         console.log(`[backlink-check] pane=${bl.paneExists} count=${bl.count} readme=${bl.mentionsReadme} jump=${bl.jumped} ${bl.paneExists && bl.count >= 1 && bl.mentionsReadme && bl.jumped ? 'OK' : 'FAIL'}`)
+        assertUiCheck('backlink', bl.paneExists && bl.count >= 1 && bl.mentionsReadme && bl.jumped, bl)
         // tag panel check: third sidebar tab lists index tags, click filters to files
         const tagCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -669,6 +696,7 @@ async function createWindow() {
         `)
         const tg = JSON.parse(tagCheck)
         console.log(`[tag-check] pane=${tg.paneExists} count=${tg.count} travel=${tg.hasTravel} filtered=${tg.filtered} tags=${JSON.stringify(tg.texts)} ${tg.paneExists && tg.hasTravel && tg.filtered ? 'OK' : 'FAIL'}`)
+        assertUiCheck('tag', tg.paneExists && tg.hasTravel && tg.filtered, tg)
         // multi-tab check: cmd-click opens a new tab, switching restores, close works
         const tabCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -689,18 +717,20 @@ async function createWindow() {
               // close the second tab via its close button
               const closeBtns = bar ? [...bar.querySelectorAll('.doc-tab .tab-close')] : [];
               const beforeClose = bar ? bar.querySelectorAll('.doc-tab').length : -1;
-              if (closeBtns[0]) closeBtns[0].click();
+              if (closeBtns[1]) closeBtns[1].click();
               await new Promise(r => setTimeout(r, 900));
               const afterClose = bar ? bar.querySelectorAll('.doc-tab').length : -1;
-              return JSON.stringify({bar: !!bar, initial, afterOpen, activeTitle, backTitle, beforeClose, afterClose});
+              const afterCloseTitle = document.getElementById('file-title')?.textContent ?? '';
+              return JSON.stringify({bar: !!bar, initial, afterOpen, activeTitle, backTitle, beforeClose, afterClose, afterCloseTitle});
             } catch (err) {
               return JSON.stringify({error: String(err)});
             }
           })()
         `)
         const tb = JSON.parse(tabCheck)
-        const tabOk = tb.bar && tb.initial === 1 && tb.afterOpen === 2 && tb.activeTitle === '旅行计划.md' && tb.backTitle === 'README.md' && tb.afterClose === 1
+        const tabOk = tb.bar && tb.initial === 1 && tb.afterOpen === 2 && tb.activeTitle === '旅行计划.md' && tb.backTitle === 'README.md' && tb.afterClose === 1 && tb.afterCloseTitle === 'README.md'
         console.log(`[tab-check] bar=${tb.bar} initial=${tb.initial} open=${tb.afterOpen}(${tb.activeTitle}) back=${tb.backTitle} close=${tb.beforeClose}->${tb.afterClose} ${tabOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('tab', tabOk, tb)
         // [[ completion check: typing [[ in the editor offers document names; original content restored after
         const readmePath4Restore = path.join(testLibrary, 'README.md')
         const readmeBefore = fs.readFileSync(readmePath4Restore, 'utf8')
@@ -727,6 +757,7 @@ async function createWindow() {
         const cc = JSON.parse(completionCheck)
         const ccOk = cc.tooltip && (cc.options || []).some((o: string) => o.includes('旅行计划'))
         console.log(`[completion-check] tooltip=${cc.tooltip} options=${JSON.stringify(cc.options)} ${ccOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('completion', ccOk, cc)
         // plugin runtime check: sample plugin loads, contributes a command, runs; callout dogfood disable/enable
         const pluginCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -736,12 +767,17 @@ async function createWindow() {
               const runtimeReady = !!window.ink;
               const listed = runtimeReady ? await window.mdr.pluginsList() : [];
               const hello = (listed || []).find(p => p.id === 'hello-inkleaf');
+              const probe = (listed || []).find(p => p.id === 'bridge-probe');
+              const probeActivated = !!probe && await window.ink.activate('bridge-probe');
+              const bridgeProbe = probeActivated && window.ink.list().some(p => p.id === 'bridge-probe' && p.state === 'active');
               let activated = false, ran = false;
               if (hello) {
                 activated = await window.ink.activate('hello-inkleaf');
-                document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'hello.hello'}}));
+                document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'hello-inkleaf.hello'}}));
                 await new Promise(r => setTimeout(r, 600));
-                ran = !!document.getElementById('ink-hello-marker');
+                document.dispatchEvent(new CustomEvent('mdr-test-rerender'));
+                await new Promise(r => setTimeout(r, 900));
+                ran = !!document.querySelector('#preview [data-plugin-demo="1"]');
               }
               // dogfood: disable the internal callout plugin, re-render, callout must disappear
               let disableWorks = false, reenableWorks = false;
@@ -757,16 +793,20 @@ async function createWindow() {
                 await new Promise(r => setTimeout(r, 900));
                 reenableWorks = document.querySelectorAll('#preview blockquote.md-callout').length >= 1;
               }
-              return JSON.stringify({runtimeReady, listed: listed.length, hello: !!hello, activated, ran, disableWorks, reenableWorks});
+              const isolated = document.querySelector('#preview [data-plugin-demo="1"]')?.getAttribute('data-bridge-isolated') === 'true';
+              return JSON.stringify({runtimeReady, listed: listed.length, hello: !!hello, activated, ran, isolated, bridgeProbe, disableWorks, reenableWorks});
             } catch (err) {
               return JSON.stringify({error: String(err)});
             }
           })()
         `)
         const pc2 = JSON.parse(pluginCheck)
-        const pcOk = pc2.runtimeReady && pc2.hello && pc2.activated && pc2.ran && pc2.disableWorks && pc2.reenableWorks
-        console.log(`[plugin-check] runtime=${pc2.runtimeReady} listed=${pc2.listed} hello=${pc2.hello} activated=${pc2.activated} ran=${pc2.ran} calloutOff=${pc2.disableWorks} calloutOn=${pc2.reenableWorks} ${pcOk ? 'OK' : 'FAIL'}`)
+        const pcOk = pc2.runtimeReady && pc2.hello && pc2.activated && pc2.ran && pc2.isolated && pc2.bridgeProbe && pc2.disableWorks && pc2.reenableWorks
+        console.log(`[plugin-check] runtime=${pc2.runtimeReady} listed=${pc2.listed} hello=${pc2.hello} activated=${pc2.activated} ran=${pc2.ran} isolated=${pc2.isolated} zeroPermissionProbe=${pc2.bridgeProbe} calloutOff=${pc2.disableWorks} calloutOn=${pc2.reenableWorks} ${pcOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('plugin', pcOk, pc2)
         // stability checks: tab dirty-state preservation / session tabs persisted / clipboard image paste
+        const tripPath = path.join(testLibrary, '笔记', '旅行计划.md')
+        const tripOriginal = fs.readFileSync(tripPath, 'utf8')
         const stabilityCheck = await win.webContents.executeJavaScript(`
           (async () => {
             try {
@@ -775,13 +815,18 @@ async function createWindow() {
               await new Promise(r => setTimeout(r, 1400));
               document.dispatchEvent(new CustomEvent('mdr-test-type', {detail: {text: 'ST3MARK'}}));
               await new Promise(r => setTimeout(r, 300));
-              const dirtyAfterEdit = document.getElementById('save-state')?.textContent ?? '';
               document.querySelector('.tree-row[data-path$="README.md"]')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
               await new Promise(r => setTimeout(r, 1400));
               document.querySelector('.tree-row[data-path$="旅行计划.md"]')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
               await new Promise(r => setTimeout(r, 1400));
               const cmText = document.querySelector('.cm-content')?.textContent ?? '';
-              const preserved = cmText.includes('ST3MARK') || dirtyAfterEdit.includes('未保存');
+              const returnedState = document.getElementById('save-state')?.textContent ?? '';
+              const returnedDirty = document.querySelector('.doc-tab.active')?.classList.contains('dirty') === true;
+              const diskText = await window.mdr.readFile(${JSON.stringify(tripPath)});
+              const stateMatches = (returnedState.includes('未保存') && returnedDirty)
+                || (returnedState === '已保存' && !returnedDirty && diskText.includes('ST3MARK'));
+              const preserved = cmText.includes('ST3MARK') && stateMatches
+                && document.getElementById('file-title')?.textContent === '旅行计划.md';
               // 清理：删掉标记（通过命令面板不可行——直接编辑器选中末尾删除：撤销即可）
               document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: '__noop__'}}));
               // --- ST5: 剪贴板贴图（合成 ClipboardEvent） ---
@@ -800,19 +845,17 @@ async function createWindow() {
                 pasteOk = src.includes('assets/paste-');
               } catch (e) { pasteOk = false; }
               // --- ST4 由主进程侧核对 session.json ---
-              return JSON.stringify({preserved, pasteOk});
+              return JSON.stringify({preserved, pasteOk, returnedState, returnedDirty, savedMarker: diskText.includes('ST3MARK')});
             } catch (err) {
               return JSON.stringify({error: String(err)});
             }
           })()
         `)
         // ST3 现场恢复：旅行计划文档的 ST3MARK 需要从磁盘撤销——读原文重写
-        const tripPath = path.join(testLibrary, '笔记', '旅行计划.md')
-        const tripOriginal = fs.readFileSync(tripPath, 'utf8')
         const st = JSON.parse(stabilityCheck)
         // 等自动保存落盘后还原（贴图/输入已触发保存计时器）
         await new Promise((r) => setTimeout(r, 2600))
-        fs.writeFileSync(tripPath, tripOriginal.replace(/ST3MARK/g, ''))
+        fs.writeFileSync(tripPath, tripOriginal)
         const readmeOriginal = fs.readFileSync(path.join(testLibrary, 'README.md'), 'utf8')
         fs.writeFileSync(path.join(testLibrary, 'README.md'), readmeOriginal)
         // ST4: session.json 应含 tabs 数组
@@ -829,6 +872,7 @@ async function createWindow() {
         }
         const stOk = st.preserved && st.pasteOk && tabsPersisted
         console.log(`[stability-check] tabPreserved=${st.preserved} pasteImage=${st.pasteOk} sessionTabs=${tabsPersisted} ${stOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('stability', stOk, { ...st, tabsPersisted })
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -851,6 +895,7 @@ async function createWindow() {
         `)
         const rxc = JSON.parse(regexCheck)
         console.log(`[regex-check] lines=${rxc.lines} direct=${rxc.direct} ${rxc.lines >= 4 && rxc.direct >= 4 ? 'OK' : 'FAIL'}`)
+        assertUiCheck('regex', rxc.lines >= 4 && rxc.direct >= 4, rxc)
         const focusShot = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-focus.png`), focusShot.toPNG())
         await win.webContents.executeJavaScript(`
@@ -919,25 +964,48 @@ async function writeSamplePlugin() {
     version: '0.1.0',
     engines: { inkleaf: '>=0.4.0' },
     main: 'main.mjs',
-    activation: ['onCommand:hello.hello'],
-    contributes: { commands: [{ id: 'hello.hello', title: '打个招呼' }] },
-    permissions: ['commands', 'ui'],
+    activation: ['onCommand:hello-inkleaf.hello'],
+    contributes: { commands: [{ id: 'hello-inkleaf.hello', title: '打个招呼' }] },
+    permissions: ['commands', 'render'],
   }
   await fs.promises.writeFile(path.join(dir, 'ink.plugin.json'), JSON.stringify(manifest, null, 2))
   const code = [
+    'let ran = false, bridgeIsolated = false',
     'export async function activate(ink) {',
-    "  ink.commands.register({ id: 'hello.hello', title: '打个招呼', run: () => {",
-    "    const el = document.createElement('div')",
-    "    el.id = 'ink-hello-marker'",
-    "    el.textContent = 'hello from plugin'",
-    '    document.body.appendChild(el)',
+    "  ink.commands.register({ id: 'hello-inkleaf.hello', title: '打个招呼', run: () => {",
+    '    ran = true',
+    "    const ownAbsent = typeof window.mdr === 'undefined'",
+    '    let parentDenied = false',
+    '    try { void parent.mdr } catch { parentDenied = true }',
+    '    bridgeIsolated = ownAbsent && parentDenied',
     '  } })',
+    '  ink.pipeline.registerPostProcessor(container => {',
+    '    if (!ran) return',
+    "    const marker = document.createElement('span')",
+    "    marker.dataset.pluginDemo = '1'",
+    '    marker.dataset.bridgeIsolated = String(bridgeIsolated)',
+    "    marker.textContent = 'plugin command ran'",
+    '    container.appendChild(marker)',
+    '  })',
     '}',
-    'export function deactivate() {',
-    "  document.getElementById('ink-hello-marker')?.remove()",
-    '}',
+    'export function deactivate() {}',
   ].join('\n')
   await fs.promises.writeFile(path.join(dir, 'main.mjs'), code)
+  const probe = path.join(app.getPath('userData'), 'plugins', 'bridge-probe')
+  await fs.promises.mkdir(probe, { recursive: true })
+  await fs.promises.writeFile(path.join(probe, 'ink.plugin.json'), JSON.stringify({
+    id: 'bridge-probe', name: 'Bridge isolation probe', version: '0.1.0',
+    main: 'main.mjs', permissions: [], contributes: {},
+  }))
+  await fs.promises.writeFile(path.join(probe, 'main.mjs'), [
+    'export function activate() {',
+    "  if (typeof window.mdr !== 'undefined') throw new Error('child bridge exposed')",
+    '  let blocked = false',
+    '  try { void parent.mdr } catch { blocked = true }',
+    "  if (!blocked) throw new Error('parent bridge readable')",
+    "  parent.postMessage({kind: 'forged-bridge', method: 'writeFile'}, '*')",
+    '}',
+  ].join('\n'))
 }
 
 function buildMenu() {

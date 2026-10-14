@@ -7,7 +7,7 @@ import { escapeHtml } from './util'
 import { applyTheme, setTheme, cycleTheme, onThemeChange, currentTheme } from './theme'
 import { FileTree } from './fileTree'
 import { EditorPane } from './editor'
-import { renderPreview, handleLinkClick, setTaskToggleHandler } from './preview'
+import { clearPreview, renderPreview, handleLinkClick, setTaskToggleHandler } from './preview'
 import { buildOutline, updateActiveHeading } from './outline'
 import { setupSync } from './syncScroll'
 import { setupLightbox } from './lightbox'
@@ -19,7 +19,7 @@ import { registerCommand, runCommand } from './commands'
 import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
 import { setWikilinkNav } from './wikilink'
 import { setBacklinkNav, refreshBacklinks } from './backlink'
-import { TabManager } from './docSession'
+import { TabManager, type DocSession } from './docSession'
 import { bootPlugins } from './pluginRuntime'
 import { registerCalloutPlugin } from './bundled-callout'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
@@ -147,8 +147,10 @@ function togglePane(key: PaneKey) {
 
 // ---------------- files ----------------
 
+let sessionSave = Promise.resolve()
 function persistSession() {
-  void window.mdr.setSession(session)
+  const snapshot = structuredClone(session)
+  sessionSave = sessionSave.catch(() => {}).then(() => window.mdr.setSession(snapshot)).catch(error => console.error('Session save failed', error))
 }
 
 async function openLibrary(root: string): Promise<boolean> {
@@ -175,7 +177,45 @@ async function openFileAction() {
   void openFile(p)
 }
 
-let opening = false
+let navigation = Promise.resolve()
+
+function serializeNavigation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = navigation.then(operation)
+  navigation = result.then(() => {}, () => {})
+  return result
+}
+
+function cachedText(session: DocSession | null): string | null {
+  const json = session?.editorJSON as { doc?: unknown } | null
+  return typeof json?.doc === 'string' ? json.doc : null
+}
+
+function showDocumentError(title: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error)
+  console.error(title, error)
+  void window.mdr.confirm({ title, message, okLabel: '知道了' })
+}
+
+async function captureCurrentDocument(): Promise<void> {
+  await editor.saveNow()
+  const path = editor.currentPath
+  if (!path) return
+  tabs.capturePath(path, editor.exportState(), previewScroll.scrollTop, editor.isDirty())
+  const session = tabs.get(tabs.indexOf(path))
+  if (session && !editor.isDirty()) session.diskContent = editor.getContent()
+}
+
+async function saveAllDocuments(): Promise<void> {
+  await captureCurrentDocument()
+  for (const session of tabs.all()) {
+    if (!session.dirty || session.path === editor.currentPath) continue
+    const text = cachedText(session)
+    if (text === null) throw new Error('未保存标签页的内容无法读取，请先回到该标签页保存')
+    await window.mdr.writeFile(session.path, text)
+    session.dirty = false
+    session.diskContent = text
+  }
+}
 
 /** tabbar 渲染：文件名 + 脏点 + 关闭按钮 */
 function renderTabs() {
@@ -185,7 +225,7 @@ function renderTabs() {
   const paths = tabs.paths()
   paths.forEach((p, i) => {
     const tab = document.createElement('div')
-    tab.className = 'doc-tab' + (i === tabs.activeIndex ? ' active' : '') + (i === tabs.activeIndex && editor.isDirty() ? ' dirty' : '')
+    tab.className = 'doc-tab' + (i === tabs.activeIndex ? ' active' : '') + (tabs.get(i)?.dirty ? ' dirty' : '')
     tab.setAttribute('role', 'tab')
     tab.setAttribute('aria-selected', String(i === tabs.activeIndex))
     const name = document.createElement('span')
@@ -212,27 +252,38 @@ function renderTabs() {
 
 async function switchToTab(i: number): Promise<void> {
   const target = tabs.get(i)
-  if (!target || i === tabs.activeIndex) return
+  if (!target) return
   await openFile(target.path)
 }
 
 async function closeTabUi(i: number): Promise<void> {
   const closing = tabs.get(i)
   if (!closing) return
-  if (i === tabs.activeIndex) {
-    if (editor.isDirty()) await editor.saveNow()
-    tabs.capture(editor.exportState(), previewScroll.scrollTop, false)
-  }
-  const next = tabs.close(i)
-  if (!next) {
-    closeFileUi()
-    return
-  }
-  await openFile(next.path)
+  await serializeNavigation(async () => {
+    const index = tabs.indexOf(closing.path)
+    if (index < 0) return
+    const locksEditor = closing.path === editor.currentPath
+    if (locksEditor) editor.setMutationLocked(true)
+    try {
+      if (closing.path === editor.currentPath) await captureCurrentDocument()
+      else if (closing.dirty) {
+        const text = cachedText(closing)
+        if (text === null) throw new Error('标签页尚未保存，无法关闭')
+        await window.mdr.writeFile(closing.path, text)
+        closing.dirty = false
+      }
+      const next = tabs.close(index)
+      if (!next) closeFileUi()
+      else await openFileNow(next.path)
+    } catch (error) { showDocumentError('保存失败，标签页仍保持打开', error) }
+    finally { if (locksEditor) editor.setMutationLocked(false) }
+  })
 }
 
 /** 清空文档区 UI（所有标签已关或书库关闭时） */
 function closeFileUi() {
+  if (renderTimer) { clearTimeout(renderTimer); renderTimer = null }
+  if (scrollSaveTimer) { clearTimeout(scrollSaveTimer); scrollSaveTimer = null }
   if (tabs.count) {
     tabs.restorePaths([], -1)
   }
@@ -243,7 +294,7 @@ function closeFileUi() {
   void window.mdr.setWindowEdited(false)
   tree.markSelected(null)
   editor.clear()
-  preview.innerHTML = ''
+  clearPreview(preview)
   outlineNav.innerHTML = ''
   fileTitle.textContent = ''
   document.title = '墨页 · Inkleaf'
@@ -253,51 +304,68 @@ function closeFileUi() {
   applyLayout()
 }
 
-async function openFile(path: string, opts?: { line?: number; newTab?: boolean }): Promise<boolean> {
-  if (opening) return false
+type OpenDocumentOptions = { line?: number; newTab?: boolean; anchor?: string }
+
+function openFile(path: string, opts?: OpenDocumentOptions): Promise<boolean> {
+  return serializeNavigation(() => openFileNow(path, opts))
+}
+
+async function openFileNow(path: string, opts?: OpenDocumentOptions): Promise<boolean> {
+  const existing = tabs.get(tabs.indexOf(path))
   // 已是当前文件：仅跳转
-  if (tabs.activePath === path && !opts?.newTab) {
-    if (opts?.line) jumpToLine(opts.line)
+  if (editor.currentPath === path && runtime.currentFile === path && tabs.activePath === path && !existing?.stale) {
+    const line = opts?.line ?? (opts?.anchor ? findHeadingLine(path, opts.anchor) : undefined)
+    if (line) jumpToLine(line)
     return true
   }
-  opening = true
   try {
-    // 切换前：保存并捕获当前 tab 状态
-    if (tabs.activePath) {
-      if (editor.isDirty()) await editor.saveNow()
-      tabs.capture(editor.exportState(), previewScroll.scrollTop, false)
-    }
-    const sess = tabs.activate(path, { newTab: opts?.newTab })
-    let restored = false
-    if (sess.editorJSON) {
-      // 内存态恢复（含撤销历史与滚动位置）
-      editor.setPath(path)
-      editor.loadState(sess.editorJSON)
-      editor.setDirty(sess.dirty)
-      restored = true
-    }
-    let content: string | null = restored ? editor.getContent() : null
-    if (!restored) {
-      try {
-        content = await window.mdr.readFile(path)
-      } catch {
-        // file no longer exists — drop it from recent list and the tab
-        const s = getState()
-        s.recent = s.recent.filter((x) => x !== path)
-        saveState()
-        renderRecent()
-        const idx = tabs.indexOf(path)
-        if (idx >= 0) tabs.close(idx)
-        return false
+    await captureCurrentDocument()
+    // Always validate existence and freshness before restoring a cached buffer.
+    let diskContent: string
+    try {
+      diskContent = await window.mdr.readFile(path)
+    } catch (error) {
+      const s = getState()
+      s.recent = s.recent.filter(value => value !== path)
+      saveState()
+      if (s.sidebarTab === 'recent') renderRecent()
+      const next = existing ? tabs.removePath(path) : tabs.get()
+      if (!editor.currentPath || editor.currentPath === path || tabs.indexOf(editor.currentPath) < 0) {
+        editor.clear()
+        runtime.currentFile = null
+        if (next && next.path !== path) return openFileNow(next.path)
+        closeFileUi()
       }
+      showDocumentError('无法打开文件', error)
+      return false
     }
+    const text = cachedText(existing)
+    if (existing?.dirty && existing.diskContent !== null && existing.diskContent !== diskContent) {
+      const proceed = await window.mdr.confirm({ title: '文件在外部发生变化', message: '该标签页仍有未保存编辑。继续会保留这些编辑，请核对内容后再保存；保存会覆盖外部版本。', okLabel: '继续编辑' })
+      if (!proceed) return false
+    }
+    // Reading the target or answering a conflict dialog can take time; flush any
+    // input made in the current document during that wait before changing views.
+    await captureCurrentDocument()
+    const restored = !!existing?.editorJSON && (existing.dirty || !existing.stale && text === diskContent)
+    const sess = tabs.activate(path, { newTab: opts?.newTab })
+    if (renderTimer) { clearTimeout(renderTimer); renderTimer = null }
+    if (scrollSaveTimer) { clearTimeout(scrollSaveTimer); scrollSaveTimer = null }
     runtime.currentFile = path
     session.lastFile = path
     session.recentFiles = [path, ...(Array.isArray(session.recentFiles) ? (session.recentFiles as string[]) : []).filter((x) => x !== path)].slice(0, 10)
     persistSession()
     void window.mdr.setWindowFile(path)
     tree.markSelected(path)
-    if (!restored) editor.openFile(path, content!)
+    if (restored) {
+      const wasDirty = sess.dirty
+      editor.setPath(path)
+      try { editor.loadState(sess.editorJSON) }
+      catch { editor.openFile(path, wasDirty && text !== null ? text : diskContent) }
+      editor.setDirty(wasDirty)
+    } else editor.openFile(path, diskContent)
+    sess.diskContent = diskContent
+    sess.stale = false
     const name = path.split('/').pop() ?? path
     fileTitle.textContent = name
     document.title = `${name} — 墨页 · Inkleaf`
@@ -305,11 +373,10 @@ async function openFile(path: string, opts?: { line?: number; newTab?: boolean }
     buildOutline(preview, outlineNav)
     updateActiveHeading(preview, outlineNav)
     const saved = restored ? sess.scrollY : getState().scrollByPath[path]
-    if (opts?.line) {
-      jumpToLine(opts.line)
-    } else if (saved) {
-      previewScroll.scrollTop = saved
-    }
+    const line = opts?.line ?? (opts?.anchor ? findHeadingLine(path, opts.anchor) : undefined)
+    if (line) jumpToLine(line)
+    else previewScroll.scrollTop = saved ?? 0
+    tabs.capturePath(path, editor.exportState(), previewScroll.scrollTop, editor.isDirty())
     const s = getState()
     s.recent = [path, ...s.recent.filter((x) => x !== path)].slice(0, 10)
     saveState()
@@ -319,21 +386,23 @@ async function openFile(path: string, opts?: { line?: number; newTab?: boolean }
     applyLayout()
     renderTabs()
     return true
-  } finally {
-    opening = false
+  } catch (error) {
+    showDocumentError('无法切换文档，当前编辑仍已保留', error)
+    return false
   }
 }
 
 /** 外部删除/关闭书库：从 tab 集中管理角度清理当前文档 */
-function closeFile() {
-  const cur = runtime.currentFile
-  const idx = cur ? tabs.indexOf(cur) : -1
-  const next = idx >= 0 ? tabs.close(idx) : null
-  if (next) {
-    void openFile(next.path)
-    return
-  }
-  closeFileUi()
+async function removeDeletedDocuments(path: string, directory = false): Promise<void> {
+  const current = editor.currentPath
+  const removesCurrent = current === path || !!current && directory && current.startsWith(path + '/')
+  const next = tabs.removePath(path, directory)
+  if (!removesCurrent) return
+  // Never autosave a document back to a path that has just been deleted.
+  editor.clear()
+  runtime.currentFile = null
+  if (next) await openFileNow(next.path)
+  else closeFileUi()
 }
 
 async function newFileAction(dirOverride?: string) {
@@ -534,19 +603,19 @@ function zoomFont(delta: number) {
   applyFontScale(getState().fontScale + delta)
 }
 
-function paletteOpts() {
+function paletteOpts(newTab = false) {
   return {
     listFiles: () => window.mdr.listFiles(),
     searchText: (q: string, isRegex?: boolean) => window.mdr.searchText(q, isRegex),
     recent: () => getState().recent,
     libraryRoot: () => runtime.libraryRoot,
-    onOpenFile: (p: string, line?: number) => void openFile(p, { line }),
+    onOpenFile: (p: string, line?: number) => void openFile(p, { line, newTab }),
   }
 }
 
-function openPaletteFor(mode: 'files' | 'search') {
+function openPaletteFor(mode: 'files' | 'search', newTab = false) {
   if (!runtime.libraryRoot) return
-  openPalette(mode, paletteOpts())
+  openPalette(mode, paletteOpts(newTab))
 }
 
 async function exportTo(kind: 'pdf' | 'html', target: string) {
@@ -583,6 +652,7 @@ async function insertImageFrom(srcOverride?: string) {
     void window.mdr.confirm({ title: '插入失败', message: '图片复制失败', okLabel: '知道了' })
     return
   }
+  if (runtime.currentFile !== cur) return
   editor.insertImageAtCursor(`assets/${dest.split('/').pop()}`)
 }
 
@@ -596,13 +666,19 @@ async function exportCurrent(kind: 'pdf' | 'html') {
 }
 
 async function closeLibrary() {
-  await window.mdr.closeLibrary()
-  runtime.libraryRoot = null
-  session.libraryRoot = null
-  persistSession()
-  closeFile()
-  await tree.refresh()
-  applyLayout()
+  await serializeNavigation(async () => {
+    editor.setMutationLocked(true)
+    try {
+      await saveAllDocuments()
+      await window.mdr.closeLibrary()
+      runtime.libraryRoot = null
+      session.libraryRoot = null
+      closeFileUi()
+      await tree.refresh()
+      applyLayout()
+    } catch (error) { showDocumentError('保存失败，书库仍保持打开', error) }
+    finally { editor.setMutationLocked(false) }
+  })
 }
 
 function registerBuiltinCommands() {
@@ -610,9 +686,9 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'open-file', title: '打开文件…', run: () => void openFileAction() })
   registerCommand({ id: 'open-folder', title: '打开文件夹…', run: () => void openFolderAction() })
   registerCommand({ id: 'new-file', title: '新建文件', run: () => void newFileAction() })
-  registerCommand({ id: 'save', title: '保存', run: () => void editor.saveNow() })
+  registerCommand({ id: 'save', title: '保存', run: () => void saveAllDocuments().catch(error => showDocumentError('保存失败', error)) })
   registerCommand({ id: 'close-library', title: '关闭书库', run: () => void closeLibrary() })
-  registerCommand({ id: 'new-tab', title: '新标签页打开文件…', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'new-tab', title: '新标签页打开文件…', run: () => openPaletteFor('files', true), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'close-tab', title: '关闭标签页', run: () => void closeTabUi(tabs.activeIndex), when: () => tabs.count > 0 })
   registerCommand({ id: 'quick-switch', title: '快速切换文件', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'search', title: '在书库中搜索', run: () => openPaletteFor('search'), when: () => !!runtime.libraryRoot })
@@ -675,12 +751,20 @@ function setupActions() {
 
 function setupEditorCallbacks() {
   editor.onDirtyChange = (d) => {
+    const current = editor.currentPath
+    const tab = current ? tabs.get(tabs.indexOf(current)) : null
+    if (tab) tab.dirty = d
     renderTabs()
     saveStateEl.textContent = d ? '● 未保存' : '已保存'
     saveStateEl.classList.toggle('dirty', d)
     const name = runtime.currentFile?.split('/').pop() ?? ''
     document.title = `${d ? '● ' : ''}${name} — 墨页 · Inkleaf`
     void window.mdr.setWindowEdited(d && !!runtime.currentFile)
+  }
+  editor.onSaveError = () => {
+    saveStateEl.textContent = '● 保存失败，编辑仍已保留'
+    saveStateEl.classList.add('dirty')
+    renderTabs()
   }
   editor.onStatsChange = (s) => {
     $('#editor-stats').textContent = s
@@ -717,30 +801,42 @@ function setupPreviewScroll() {
 }
 
 let fsTimer: number | null = null
+const fsEvents = new Map<string, { event: string; path: string }>()
 function setupFsWatch() {
   window.mdr.onFsEvent((ev) => {
+    fsEvents.set(ev.path, ev)
     if (fsTimer) clearTimeout(fsTimer)
-    fsTimer = window.setTimeout(async () => {
-      if (runtime.libraryRoot) await tree.refresh()
-      const cur = runtime.currentFile
-      if (!cur || ev.path !== cur && !cur.startsWith(ev.path)) return
-      if (ev.event === 'unlink' || ev.event === 'unlinkDir') {
-        closeFile()
-      } else if (ev.event === 'change') {
-        // skip reloads right after our own autosave
-        if (Date.now() - editor.lastSavedAt < 2000) return
-        if (editor.isDirty()) return
-        try {
-          const content = await window.mdr.readFile(cur)
-          const scroll = previewScroll.scrollTop
-          editor.openFile(cur, content)
-          await renderPreview(previewScroll, preview, content, cur)
-          buildOutline(preview, outlineNav)
-          previewScroll.scrollTop = scroll
-        } catch {
-          /* file vanished */
+    fsTimer = window.setTimeout(() => {
+      fsTimer = null
+      const pending = [...fsEvents.values()]
+      fsEvents.clear()
+      void serializeNavigation(async () => {
+        if (runtime.libraryRoot) await tree.refresh()
+        for (const event of pending) {
+          if (event.event === 'unlink' || event.event === 'unlinkDir') {
+            await removeDeletedDocuments(event.path, event.event === 'unlinkDir')
+            continue
+          }
+          if (event.event !== 'change') continue
+          const tab = tabs.get(tabs.indexOf(event.path))
+          if (!tab) continue
+          if (editor.lastSavedPath === event.path && Date.now() - editor.lastSavedAt < 2000) continue
+          tabs.invalidate(event.path)
+          if (editor.currentPath !== event.path || editor.isDirty()) continue
+          try {
+            const content = await window.mdr.readFile(event.path)
+            if (editor.currentPath !== event.path || editor.isDirty()) continue
+            const scroll = previewScroll.scrollTop
+            editor.openFile(event.path, content)
+            tab.diskContent = content
+            tab.stale = false
+            tabs.capturePath(event.path, editor.exportState(), scroll, false)
+            await renderPreview(previewScroll, preview, content, event.path)
+            buildOutline(preview, outlineNav)
+            previewScroll.scrollTop = scroll
+          } catch { /* A later unlink event or activation handles a vanished file. */ }
         }
-      }
+      }).catch(error => showDocumentError('文件变化处理失败', error))
     }, 300)
   })
 }
@@ -799,13 +895,13 @@ async function boot() {
   editor.setTypewriter(getState().typewriter)
   setupFocusHighlight(previewScroll, preview)
   setupEditorCallbacks()
-  setupUpdater(() => editor.saveNow())
+  setupUpdater(() => serializeNavigation(saveAllDocuments))
   setupPreviewScroll()
   setupFsWatch()
   setupDragDrop()
   handleLinkClick(previewScroll, preview, (p) => void openFile(p))
   setWikilinkNav((p, anchor) => {
-    void openFile(p, anchor ? { line: findHeadingLine(p, anchor) } : undefined)
+    void openFile(p, anchor ? { anchor } : undefined)
   })
   setBacklinkNav((p, opts) => void openFile(p, opts))
   setupLightbox(preview)
@@ -871,6 +967,13 @@ async function boot() {
 
   tree.onOpenFile = (p, newTab) => void openFile(p, { newTab })
   tree.onCreated = (p) => void openFile(p)
+  tree.onMutate = operation => serializeNavigation(async () => {
+    editor.setMutationLocked(true)
+    try {
+      await saveAllDocuments()
+      await operation()
+    } finally { editor.setMutationLocked(false) }
+  })
   tree.onRenamed = ({ oldPath, newPath, isDir }) => {
     const remap = (p: string | null): string | null => {
       if (!p) return null
@@ -880,6 +983,7 @@ async function boot() {
       }
       return p === oldPath ? newPath : null
     }
+    tabs.rename(oldPath, newPath, isDir)
     const cur = runtime.currentFile
     const remapped = remap(cur)
     if (cur && remapped) {
@@ -908,9 +1012,8 @@ async function boot() {
     saveState()
     if (s.sidebarTab === 'recent') renderRecent()
   }
-  tree.onDeleted = (path) => {
-    const cur = runtime.currentFile
-    if (cur && (cur === path || cur.startsWith(path + '/'))) closeFile()
+  tree.onDeleted = async (path) => {
+    await removeDeletedDocuments(path, true)
     const s = getState()
     s.recent = s.recent.filter((p) => p !== path && !p.startsWith(path + '/'))
     saveState()
@@ -953,7 +1056,7 @@ async function boot() {
 }
 
 window.addEventListener('beforeunload', () => {
-  void editor.saveNow()
+  void editor.saveNow().catch(error => console.error('Save during close failed', error))
 })
 
 void boot()

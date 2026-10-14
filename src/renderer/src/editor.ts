@@ -1,7 +1,7 @@
 import { basicSetup } from 'codemirror'
 import { EditorView, keymap } from '@codemirror/view'
 import { Compartment, EditorState } from '@codemirror/state'
-import { indentMore, indentLess } from '@codemirror/commands'
+import { historyField, indentMore, indentLess } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -112,17 +112,23 @@ async function fileToBase64(file: File): Promise<string> {
 export class EditorPane {
   view: EditorView | null = null
   private themeComp = new Compartment()
+  private mutationComp = new Compartment()
+  private mutationLocked = false
   private path: string | null = null
   private dirty = false
   private saveTimer: number | null = null
+  private saving: Promise<void> | null = null
+  private dark = false
   /** true while openFile/clear swap the document — suppresses dirty tracking and re-render */
   private loading = false
   /** last time this editor itself wrote the file — used to ignore the resulting fs watch event */
   lastSavedAt = 0
+  lastSavedPath: string | null = null
 
   onDirtyChange: ((dirty: boolean) => void) | null = null
   onDocChanged: (() => void) | null = null
   onStatsChange: ((stats: string) => void) | null = null
+  onSaveError: ((error: unknown) => void) | null = null
 
   /** 文档名缓存供给（[[ 补全用），由总装注入 */
   docNamesProvider: (() => Promise<{ name: string; path: string }[]>) | null = null
@@ -155,6 +161,7 @@ export class EditorPane {
   }
 
   mount(host: HTMLElement, dark: boolean) {
+    this.dark = dark
     this.view = new EditorView({
       parent: host,
       state: EditorState.create({ doc: '', extensions: this.stateExtensions(dark) }),
@@ -162,12 +169,14 @@ export class EditorPane {
   }
 
   /** 扩展集中定义：mount 与 loadState(fromJSON) 共用 */
-  private stateExtensions(dark = false) {
+  private stateExtensions(dark = this.dark) {
     return [
       basicSetup,
       markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
       EditorView.lineWrapping,
       this.themeComp.of(dark ? oneDark : []),
+      this.mutationComp.of(EditorState.readOnly.of(this.mutationLocked)),
+      EditorState.transactionFilter.of(transaction => this.mutationLocked && transaction.docChanged ? [] : transaction),
       autocompletion({ override: [this.wikilinkCompletions] }),
       // list nesting / selection indent (after basicSetup so it takes precedence)
       keymap.of([
@@ -204,7 +213,14 @@ export class EditorPane {
   }
 
   setDarkTheme(dark: boolean) {
+    this.dark = dark
     this.view?.dispatch({ effects: this.themeComp.reconfigure(dark ? oneDark : []) })
+  }
+
+  /** Prevent edits while a file operation waits for the last write and changes its path. */
+  setMutationLocked(locked: boolean) {
+    this.mutationLocked = locked
+    this.view?.dispatch({ effects: this.mutationComp.reconfigure(EditorState.readOnly.of(locked)) })
   }
 
   openFile(path: string, content: string) {
@@ -213,7 +229,7 @@ export class EditorPane {
     this.setDirty(false)
     this.loading = true
     try {
-      this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: content } })
+      this.view?.setState(EditorState.create({ doc: content, extensions: this.stateExtensions() }))
     } finally {
       this.loading = false
     }
@@ -226,7 +242,7 @@ export class EditorPane {
     this.setDirty(false)
     this.loading = true
     try {
-      this.view?.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: '' } })
+      this.view?.setState(EditorState.create({ doc: '', extensions: this.stateExtensions() }))
     } finally {
       this.loading = false
     }
@@ -250,21 +266,20 @@ export class EditorPane {
 
   /** 序列化当前编辑器状态（含撤销历史）——多标签切换保存用 */
   exportState(): unknown {
-    return this.view ? this.view.state.toJSON() : null
+    return this.view ? this.view.state.toJSON({ history: historyField }) : null
   }
 
   /** 恢复编辑器状态；JSON 为空时置空文档 */
   loadState(json: unknown): void {
     if (!this.view) return
+    this.cancelSave()
     this.loading = true
     try {
       const state =
         json && typeof json === 'object'
-          ? EditorState.fromJSON(json, { extensions: this.stateExtensions() })
+          ? EditorState.fromJSON(json, { extensions: this.stateExtensions() }, { history: historyField })
           : EditorState.create({ doc: '', extensions: this.stateExtensions() })
       this.view.setState(state)
-    } catch {
-      this.view.setState(EditorState.create({ doc: '', extensions: this.stateExtensions() }))
     } finally {
       this.loading = false
     }
@@ -346,7 +361,8 @@ export class EditorPane {
   private async savePastedImage(file: File) {
     const v = this.view
     if (!v || !this.path) return
-    const dir = this.path.slice(0, this.path.lastIndexOf('/'))
+    const path = this.path
+    const dir = path.slice(0, path.lastIndexOf('/'))
     const ext = (file.type.split('/')[1] ?? 'png').replace('jpeg', 'jpg')
     const now = new Date()
     const pad = (n: number) => String(n).padStart(2, '0')
@@ -359,6 +375,7 @@ export class EditorPane {
       console.error('paste image save failed', err)
       return
     }
+    if (this.path !== path || this.view !== v) return
     const pos = v.state.selection.main
     v.dispatch({ changes: { from: pos.from, to: pos.to, insert: `![](${encodeURI(rel)})` } })
   }
@@ -386,16 +403,33 @@ export class EditorPane {
   private scheduleSave() {
     this.cancelSave()
     this.saveTimer = window.setTimeout(() => {
-      void this.saveNow()
+      void this.saveNow().catch(error => console.error('Autosave failed', error))
     }, AUTOSAVE_DELAY)
   }
 
-  async saveNow() {
-    if (!this.dirty || !this.path || !this.view) return
+  saveNow(): Promise<void> {
+    if (this.saving) return this.saving
+    if (!this.dirty || !this.path || !this.view) return Promise.resolve()
     this.cancelSave()
-    await window.mdr.writeFile(this.path, this.getContent())
-    this.lastSavedAt = Date.now()
-    this.setDirty(false)
+    const flush = async () => {
+      while (this.dirty && this.path && this.view) {
+        const path = this.path
+        const content = this.getContent()
+        await window.mdr.writeFile(path, content)
+        // A write must not mark later input or a different document as saved.
+        if (this.path === path && this.getContent() === content) {
+          this.lastSavedPath = path
+          this.lastSavedAt = Date.now()
+          this.setDirty(false)
+          this.cancelSave()
+        }
+      }
+    }
+    this.saving = flush().catch(error => {
+      this.onSaveError?.(error)
+      throw error
+    }).finally(() => { this.saving = null })
+    return this.saving
   }
 
   lineAtTop(): number {

@@ -216,6 +216,13 @@ interface LastRender {
 let last: LastRender | null = null
 let renderSeq = 0
 
+/** Close-file transitions invalidate every pending render and theme callback. */
+export function clearPreview(container: HTMLElement) {
+  renderSeq++
+  last = null
+  container.innerHTML = ''
+}
+
 export async function renderPreview(scroller: HTMLElement, container: HTMLElement, text: string, filePath: string | null) {
   ensurePipeline()
   const seq = ++renderSeq
@@ -234,9 +241,11 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
   const ctx: RenderContext = {
     filePath,
     baseDir: filePath ? filePath.slice(0, filePath.lastIndexOf('/')) : null,
+    isCurrent: () => seq === renderSeq,
   }
   for (const fn of listPostProcessors()) {
-    await fn(container, ctx)
+    try { await fn(container, ctx) } catch (err) { console.error('[pipeline] 后处理失败', err) }
+    if (seq !== renderSeq) return
   }
   const tm0 = big ? performance.now() : 0
 
@@ -245,7 +254,11 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
   for (const code of blocks) {
     const lang = [...code.classList].find((c) => c.startsWith('language-'))?.slice('language-'.length) ?? ''
     const processor = getCodeBlockProcessor(lang)
-    if (processor) await processor(code.parentElement as HTMLElement, code.textContent ?? '', ctx)
+    if (processor) {
+      try { await processor(code.parentElement as HTMLElement, code.textContent ?? '', ctx) }
+      catch (err) { console.error('[pipeline] 代码块处理失败', err) }
+      if (seq !== renderSeq) return
+    }
   }
 
   last = { container, scroller, text, filePath }
@@ -263,9 +276,12 @@ onThemeChange(async () => {
   if (!last) return
   // render into the content container (#preview) — rendering into the scroller would
   // destroy the container element itself and detach it from the document
-  const { scroller, container, text, filePath } = last
+  const previous = last
+  const seq = renderSeq
+  const { scroller, container, text, filePath } = previous
   const scroll = scroller.scrollTop
   const mermaid = await getMermaid()
+  if (last !== previous || renderSeq !== seq) return
   mermaid.initialize(mermaidInitOptions())
   await renderPreview(scroller, container, text, filePath)
   scroller.scrollTop = scroll
