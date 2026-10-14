@@ -179,11 +179,14 @@ export function registerIpc() {
         if (request !== libraryRequest) return false
         const saved = await readSessionFromDisk()
         if (request !== libraryRequest) return false
-        await commitSession({ ...saved, libraryRoot: root })
+        const previousGeneration = libraryGeneration
+        const documentState = saved.libraryRoot === root ? {} : { lastFile: null, tabs: [], activeIndex: -1 }
+        await commitSession({ ...saved, ...documentState, libraryRoot: root })
         if (request !== libraryRequest) {
           // An in-flight rename may have completed after cancellation. This queue
           // restores the current root before any newer transition can persist.
-          await commitSession({ ...saved, libraryRoot })
+          const closed = previousGeneration !== libraryGeneration && !libraryRoot
+          await commitSession(closed ? { ...saved, libraryRoot: null, lastFile: null, tabs: [], activeIndex: -1 } : saved)
           return false
         }
         const generation = ++libraryGeneration
@@ -286,8 +289,10 @@ export function registerIpc() {
     fileListCache = null
     indexService.clearIndex()
     localAssets.setLibraryRoot(null)
-    await stopWatch()
-    await patchSession({ libraryRoot: null })
+    // Queue persistence immediately, before a newer open can enter the same queue.
+    const stopping = stopWatch()
+    const persisting = patchSession({ libraryRoot: null, lastFile: null, tabs: [], activeIndex: -1 })
+    await Promise.all([stopping, persisting])
   })
 
   ipcMain.handle(CH.fsRead, async (_e, p: string) => {

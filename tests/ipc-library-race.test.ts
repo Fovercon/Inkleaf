@@ -209,3 +209,51 @@ test('a newer failed selection cancels and rolls back an older pending library p
     assert.equal(api.resolveName('A'), a)
   } finally { paused.restore() }
 })
+
+test('a slow old watcher close cannot overwrite a newly opened library session', async t => {
+  const { api, invoke, root, a, temporary, session, watchers } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  await until(() => api.resolveName('A') === a, 'The old library must initialize')
+  let release!: () => void, reached!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const entered = new Promise<void>(resolve => { reached = resolve })
+  watchers[0].close = async () => { watchers[0].closed = true; reached(); await gate }
+  try {
+    const closing = invoke(api.CH.libClose)
+    await entered
+    assert.equal((await invoke(api.CH.sessionGet)).libraryRoot, null, 'Closing persistence must join the write queue before the slow watcher finishes')
+    const other = path.join(temporary, 'other'); await fs.mkdir(other)
+    const b = path.join(other, 'B.md'); await fs.writeFile(b, '# B')
+    await invoke(api.CH.libOpen, other)
+    await until(() => api.resolveName('B') === b, 'The replacement library must finish')
+    release(); await closing
+    assert.equal(api.getLibraryRoot(), other)
+    assert.equal(JSON.parse(await fs.readFile(session, 'utf8')).libraryRoot, other)
+    assert.equal(api.resolveName('B'), b)
+  } finally { release() }
+})
+
+test('a new library persists cleared document paths while same-library startup preserves saved tabs', async t => {
+  const { api, invoke, root, a, temporary, session } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  await invoke(api.CH.sessionSet, { libraryRoot: root, lastFile: a, tabs: [a], activeIndex: 0 })
+  await invoke(api.CH.libOpen, root)
+  let stored = JSON.parse(await fs.readFile(session, 'utf8'))
+  assert.deepEqual(stored.tabs, [a]); assert.equal(stored.lastFile, a)
+  const other = path.join(temporary, 'other'); await fs.mkdir(other)
+  await fs.writeFile(path.join(other, 'B.md'), '# B')
+  await invoke(api.CH.libOpen, other)
+  stored = JSON.parse(await fs.readFile(session, 'utf8'))
+  assert.equal(stored.libraryRoot, other)
+  assert.deepEqual(stored.tabs, []); assert.equal(stored.activeIndex, -1); assert.equal(stored.lastFile, null)
+})
+
+test('closing a library durably clears its root and document paths together', async t => {
+  const { api, invoke, root, a, session } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  await invoke(api.CH.sessionSet, { libraryRoot: root, lastFile: a, tabs: [a], activeIndex: 0 })
+  await invoke(api.CH.libClose)
+  const stored = JSON.parse(await fs.readFile(session, 'utf8'))
+  assert.equal(stored.libraryRoot, null); assert.equal(stored.lastFile, null)
+  assert.deepEqual(stored.tabs, []); assert.equal(stored.activeIndex, -1)
+})
