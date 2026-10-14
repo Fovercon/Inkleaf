@@ -14,6 +14,7 @@ import { openPalette } from './commandPalette'
 import { buildStandaloneHtml } from './export'
 import { setupUpdater } from './updater'
 import { setupPlatformUi } from './platform'
+import { registerCommand, runCommand } from './commands'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -409,112 +410,64 @@ async function closeLibrary() {
   applyLayout()
 }
 
+function registerBuiltinCommands() {
+  // 文件
+  registerCommand({ id: 'open-file', title: '打开文件…', run: () => void openFileAction() })
+  registerCommand({ id: 'open-folder', title: '打开文件夹…', run: () => void openFolderAction() })
+  registerCommand({ id: 'new-file', title: '新建文件', run: () => void newFileAction() })
+  registerCommand({ id: 'save', title: '保存', run: () => void editor.saveNow() })
+  registerCommand({ id: 'close-library', title: '关闭书库', run: () => void closeLibrary() })
+  registerCommand({ id: 'quick-switch', title: '快速切换文件', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'search', title: '在书库中搜索', run: () => openPaletteFor('search'), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'export-pdf', title: '导出为 PDF…', run: () => void exportCurrent('pdf'), when: () => !!runtime.currentFile })
+  registerCommand({ id: 'export-html', title: '导出为 HTML…', run: () => void exportCurrent('html'), when: () => !!runtime.currentFile })
+  registerCommand({ id: 'insert-image', title: '插入图片…', run: () => void insertImageFrom(), when: () => !!runtime.currentFile })
+  // 面板
+  registerCommand({ id: 'toggle-sidebar', title: '切换书库栏', run: () => togglePane('sidebar') })
+  registerCommand({ id: 'toggle-editor', title: '切换编辑面板', run: () => togglePane('editor') })
+  registerCommand({ id: 'toggle-preview', title: '切换预览面板', run: () => togglePane('preview') })
+  registerCommand({ id: 'toggle-outline', title: '切换大纲', run: () => togglePane('outline') })
+  // 主题与字号
+  registerCommand({ id: 'theme-light', title: '浅色主题', run: () => setTheme('light') })
+  registerCommand({ id: 'theme-sepia', title: '羊皮纸主题', run: () => setTheme('sepia') })
+  registerCommand({ id: 'theme-green', title: '护眼绿主题', run: () => setTheme('green') })
+  registerCommand({ id: 'theme-dark', title: '深色主题', run: () => setTheme('dark') })
+  registerCommand({ id: 'theme-auto', title: '跟随系统主题', run: () => setTheme('auto') })
+  registerCommand({ id: 'zoom-in', title: '放大字号', run: () => zoomFont(0.1) })
+  registerCommand({ id: 'zoom-out', title: '缩小字号', run: () => zoomFont(-0.1) })
+  registerCommand({ id: 'zoom-reset', title: '重置字号', run: () => applyFontScale(1) })
+  // 格式
+  registerCommand({ id: 'fmt-bold', title: '加粗', run: () => editor.toggleBold() })
+  registerCommand({ id: 'fmt-italic', title: '斜体', run: () => editor.toggleItalic() })
+  registerCommand({ id: 'fmt-code', title: '行内代码', run: () => editor.toggleInlineCode() })
+  registerCommand({ id: 'fmt-codeblock', title: '代码块', run: () => editor.toggleCodeBlock() })
+  registerCommand({ id: 'fmt-link', title: '链接', run: () => editor.insertLink() })
+}
+
 function setupActions() {
-  $('#btn-open-folder').addEventListener('click', () => void openFolderAction())
-  $('#btn-open-file').addEventListener('click', () => void openFileAction())
-  $('#btn-new-file').addEventListener('click', () => void newFileAction())
-  $('#empty-open-folder').addEventListener('click', () => void openFolderAction())
-  $('#empty-open-file').addEventListener('click', () => void openFileAction())
-  $('#btn-toggle-sidebar').addEventListener('click', () => togglePane('sidebar'))
-  $('#sidebar-collapse').addEventListener('click', () => togglePane('sidebar'))
-  $('#sidebar-expand').addEventListener('click', () => togglePane('sidebar'))
-  $('#btn-toggle-editor').addEventListener('click', () => togglePane('editor'))
-  $('#btn-toggle-preview').addEventListener('click', () => togglePane('preview'))
-  $('#btn-toggle-outline').addEventListener('click', () => togglePane('outline'))
+  // 工具栏与空状态按钮统一走命令分发
+  $('#btn-open-folder').addEventListener('click', () => runCommand('open-folder'))
+  $('#btn-open-file').addEventListener('click', () => runCommand('open-file'))
+  $('#btn-new-file').addEventListener('click', () => runCommand('new-file'))
+  $('#empty-open-folder').addEventListener('click', () => runCommand('open-folder'))
+  $('#empty-open-file').addEventListener('click', () => runCommand('open-file'))
+  $('#btn-toggle-sidebar').addEventListener('click', () => runCommand('toggle-sidebar'))
+  $('#sidebar-collapse').addEventListener('click', () => runCommand('toggle-sidebar'))
+  $('#sidebar-expand').addEventListener('click', () => runCommand('toggle-sidebar'))
+  $('#btn-toggle-editor').addEventListener('click', () => runCommand('toggle-editor'))
+  $('#btn-toggle-preview').addEventListener('click', () => runCommand('toggle-preview'))
+  $('#btn-toggle-outline').addEventListener('click', () => runCommand('toggle-outline'))
   $('#btn-theme').addEventListener('click', () => cycleTheme())
 
+  // 菜单 / Dock 菜单动作 → 命令注册表；open-path:<path> 为系统文件打开的专用通道
   window.mdr.onMenu((action) => {
-    switch (action) {
-      case 'open-file':
-        void openFileAction()
-        break
-      case 'open-folder':
-        void openFolderAction()
-        break
-      case 'new-file':
-        void newFileAction()
-        break
-      case 'save':
-        void editor.saveNow()
-        break
-      case 'toggle-sidebar':
-        togglePane('sidebar')
-        break
-      case 'toggle-editor':
-        togglePane('editor')
-        break
-      case 'toggle-preview':
-        togglePane('preview')
-        break
-      case 'toggle-outline':
-        togglePane('outline')
-        break
-      case 'theme-light':
-        setTheme('light')
-        break
-      case 'theme-sepia':
-        setTheme('sepia')
-        break
-      case 'theme-green':
-        setTheme('green')
-        break
-      case 'theme-dark':
-        setTheme('dark')
-        break
-      case 'theme-auto':
-        setTheme('auto')
-        break
-      case 'zoom-in':
-        zoomFont(0.1)
-        break
-      case 'zoom-out':
-        zoomFont(-0.1)
-        break
-      case 'zoom-reset':
-        applyFontScale(1)
-        break
-      case 'close-library':
-        void closeLibrary()
-        break
-      default:
-        if (action.startsWith('open-path:')) {
-          const p = action.slice('open-path:'.length)
-          void (async () => {
-            if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
-            await openFile(p)
-          })()
-        }
-        break
-      case 'fmt-bold':
-        editor.toggleBold()
-        break
-      case 'fmt-italic':
-        editor.toggleItalic()
-        break
-      case 'fmt-code':
-        editor.toggleInlineCode()
-        break
-      case 'fmt-codeblock':
-        editor.toggleCodeBlock()
-        break
-      case 'fmt-link':
-        editor.insertLink()
-        break
-      case 'insert-image':
-        void insertImageFrom()
-        break
-      case 'quick-switch':
-        openPaletteFor('files')
-        break
-      case 'search':
-        openPaletteFor('search')
-        break
-      case 'export-pdf':
-        void exportCurrent('pdf')
-        break
-      case 'export-html':
-        void exportCurrent('html')
-        break
+    if (runCommand(action)) return
+    if (action.startsWith('open-path:')) {
+      const p = action.slice('open-path:'.length)
+      void (async () => {
+        if (!runtime.libraryRoot) await openLibrary(p.slice(0, p.lastIndexOf('/')))
+        await openFile(p)
+      })()
     }
   })
 }
@@ -624,6 +577,7 @@ async function boot() {
   onThemeChange((t) => editor.setDarkTheme(t === 'dark'))
 
   setupActions()
+  registerBuiltinCommands()
   setupEditorCallbacks()
   setupUpdater(() => editor.saveNow())
   setupPreviewScroll()
@@ -654,6 +608,10 @@ async function boot() {
   // test hook: insert an image from a fixed path
   document.addEventListener('mdr-test-insert-image', (e) => {
     void insertImageFrom((e as CustomEvent).detail?.src)
+  })
+  // test hook: dispatch any registered command by id
+  document.addEventListener('mdr-test-command', (e) => {
+    runCommand(String((e as CustomEvent).detail?.id ?? ''))
   })
 
   // Files opened from the system file manager, command line, or recent files.
