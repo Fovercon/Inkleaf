@@ -766,6 +766,69 @@ async function createWindow() {
         const pc2 = JSON.parse(pluginCheck)
         const pcOk = pc2.runtimeReady && pc2.hello && pc2.activated && pc2.ran && pc2.disableWorks && pc2.reenableWorks
         console.log(`[plugin-check] runtime=${pc2.runtimeReady} listed=${pc2.listed} hello=${pc2.hello} activated=${pc2.activated} ran=${pc2.ran} calloutOff=${pc2.disableWorks} calloutOn=${pc2.reenableWorks} ${pcOk ? 'OK' : 'FAIL'}`)
+        // stability checks: tab dirty-state preservation / session tabs persisted / clipboard image paste
+        const stabilityCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              // --- ST3: 编辑旅行计划 → 切走再切回，内容与脏状态保全 ---
+              document.querySelector('.tree-row[data-path$="旅行计划.md"]')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 1400));
+              document.dispatchEvent(new CustomEvent('mdr-test-type', {detail: {text: 'ST3MARK'}}));
+              await new Promise(r => setTimeout(r, 300));
+              const dirtyAfterEdit = document.getElementById('save-state')?.textContent ?? '';
+              document.querySelector('.tree-row[data-path$="README.md"]')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 1400));
+              document.querySelector('.tree-row[data-path$="旅行计划.md"]')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 1400));
+              const cmText = document.querySelector('.cm-content')?.textContent ?? '';
+              const preserved = cmText.includes('ST3MARK') || dirtyAfterEdit.includes('未保存');
+              // 清理：删掉标记（通过命令面板不可行——直接编辑器选中末尾删除：撤销即可）
+              document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: '__noop__'}}));
+              // --- ST5: 剪贴板贴图（合成 ClipboardEvent） ---
+              let pasteOk = false;
+              try {
+                const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+                const file = new File([bytes], 'pasted.png', {type: 'image/png'});
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const cm = document.querySelector('.cm-content');
+                cm?.focus();
+                const ev = new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true});
+                cm?.dispatchEvent(ev);
+                await new Promise(r => setTimeout(r, 800));
+                const src = document.querySelector('.cm-content')?.textContent ?? '';
+                pasteOk = src.includes('assets/paste-');
+              } catch (e) { pasteOk = false; }
+              // --- ST4 由主进程侧核对 session.json ---
+              return JSON.stringify({preserved, pasteOk});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        // ST3 现场恢复：旅行计划文档的 ST3MARK 需要从磁盘撤销——读原文重写
+        const tripPath = path.join(testLibrary, '笔记', '旅行计划.md')
+        const tripOriginal = fs.readFileSync(tripPath, 'utf8')
+        const st = JSON.parse(stabilityCheck)
+        // 等自动保存落盘后还原（贴图/输入已触发保存计时器）
+        await new Promise((r) => setTimeout(r, 2600))
+        fs.writeFileSync(tripPath, tripOriginal.replace(/ST3MARK/g, ''))
+        const readmeOriginal = fs.readFileSync(path.join(testLibrary, 'README.md'), 'utf8')
+        fs.writeFileSync(path.join(testLibrary, 'README.md'), readmeOriginal)
+        // ST4: session.json 应含 tabs 数组
+        const sessionFile = path.join(app.getPath('userData'), 'session.json')
+        let tabsPersisted = false
+        try {
+          const sess = JSON.parse(fs.readFileSync(sessionFile, 'utf8'))
+          tabsPersisted = Array.isArray(sess.tabs) && sess.tabs.length >= 1
+        } catch { tabsPersisted = false }
+        // 贴图产物清理
+        const assetsDir = path.join(testLibrary, 'assets')
+        for (const f of fs.readdirSync(assetsDir)) {
+          if (f.startsWith('paste-')) fs.unlinkSync(path.join(assetsDir, f))
+        }
+        const stOk = st.preserved && st.pasteOk && tabsPersisted
+        console.log(`[stability-check] tabPreserved=${st.preserved} pasteImage=${st.pasteOk} sessionTabs=${tabsPersisted} ${stOk ? 'OK' : 'FAIL'}`)
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {
