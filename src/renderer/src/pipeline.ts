@@ -1,10 +1,10 @@
 /**
- * 渲染管线钩子（docs/04 §五 · 三级钩子位）——A4 问题（渲染管线封闭）的消解点。
+ * 渲染管线钩子：管理语法扩展、DOM 后处理与代码块增强。
  * 三级：
  *  1. registerMarkdownPlugin：markdown-it 插件位（语法扩展/inline 规则/core 规则）
  *  2. registerPostProcessor：DOM 后处理位（innerHTML 写入后的增强）
  *  3. registerCodeBlockProcessor：自定义 ```lang 代码块处理器
- * 内置能力（KaTeX/任务列表/脚注/callout/图片重写/Mermaid）全部经同一公开 API 注册——吃自己的狗粮。
+ * 宿主和可信内置插件使用这些接口；外部插件由沙箱桥接注册受限处理器。
  */
 import type MarkdownIt from 'markdown-it'
 

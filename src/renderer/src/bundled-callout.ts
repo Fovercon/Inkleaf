@@ -1,7 +1,6 @@
 /**
- * Callout 内置插件（狗粮 · docs/04 §十 步骤 7）：
- * 从 preview.ts 内置迁移为经 window.ink 同款 API 注册的 bundled 插件，
- * 可被 disable/enable 验证插件运行时的完整生命周期。
+ * Callout 内置插件：通过可信内置插件接口注册提示块语法与交互。
+ * 注册内容随插件启用和停用，遵循插件运行时的生命周期。
  */
 import { registerBundledPlugin } from './pluginRuntime'
 import type MarkdownIt from 'markdown-it'

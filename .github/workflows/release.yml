@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing stable tag matching package.json, e.g. v0.3.0'
+        description: 'Existing stable tag from main matching package.json, e.g. v0.4.1'
         required: true
         type: string
       publish:
@@ -37,6 +37,11 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check the public release tree
+        run: node scripts/check-release-tree.mjs
       - name: Validate version and refuse published release changes
         id: version
         shell: bash
@@ -49,6 +54,11 @@ jobs:
           if (!/^\d+\.\d+\.\d+$/.test(version) || tag !== `v${version}`) throw new Error('Tag must equal the stable package version')
           const tagged = execFileSync('git', ['rev-parse', '--verify', `refs/tags/${tag}^{commit}`], { encoding: 'utf8' }).trim()
           if (tagged !== execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()) throw new Error('Checkout must match the tag commit')
+          try {
+            execFileSync('git', ['merge-base', '--is-ancestor', tagged, 'origin/main'], { stdio: 'ignore' })
+          } catch {
+            throw new Error('Release tag must point to a commit in origin/main history')
+          }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${version}\ntag=${tag}\n`)
           NODE
           if gh release view "$RELEASE_TAG" --json isDraft > "$RUNNER_TEMP/inkleaf-release.json" 2> "$RUNNER_TEMP/inkleaf-release-error.txt"; then

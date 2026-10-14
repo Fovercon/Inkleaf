@@ -1,4 +1,4 @@
-/** 渲染层共享小工具（A8 清理：消除三处重复定义） */
+/** 渲染层共享的文本转义与路径格式化工具。 */
 
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)

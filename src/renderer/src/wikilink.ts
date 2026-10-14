@@ -1,5 +1,5 @@
 /**
- * 双链 [[...]]（docs/02 P0-3 · 首个完全经渲染管线钩子注册的功能模块）。
+ * 双链 [[...]]：通过渲染管线注册语法解析与导航交互。
  * - 语法层：markdown-it inline 规则（markdownPlugin 钩子）→ <a data-wikilink>
  * - 交互层：DOM 后处理（postProcessor 钩子）→ 名称解析/点击打开/悬停预览卡/断链样式
  */

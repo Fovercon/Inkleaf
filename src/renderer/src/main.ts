@@ -82,7 +82,7 @@ function attachEditorResizer() {
   })
 }
 
-/** 声明式注册侧栏面板：内置两块，插件面板同源（docs/04 §五 L4） */
+/** 声明式注册内置侧栏面板，统一管理面板布局。 */
 function registerBuiltinPanels() {
   const sidebarPanel: PanelDef = {
     id: 'sidebar', slot: 'left', el: sidebar, resizer: $('#resizer-sidebar'),
@@ -968,7 +968,7 @@ function setupDragDrop() {
 
 async function boot() {
   setupPlatformUi()
-  // 插件运行时：内置插件（含 callout 狗粮）立即激活，外部插件声明注入
+  // 内置插件立即激活；外部插件通过沙箱声明注册。
   registerCalloutPlugin()
   void bootPlugins()
   applyTheme()

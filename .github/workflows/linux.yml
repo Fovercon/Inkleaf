@@ -2,7 +2,7 @@ name: Validate Linux packages
 
 on:
   push:
-    branches: ['main', 'codex/**']
+    branches: ['main', 'dev', 'codex/**']
   pull_request:
   workflow_dispatch:
   workflow_call:

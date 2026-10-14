@@ -1,180 +1,124 @@
-<img src="build/inkleaf-icon.png" width="96" alt="墨页 · Inkleaf 应用图标" />
+<div align="center">
+  <img src="build/inkleaf-icon.png" alt="Inkleaf logo" width="104" />
 
-# 墨页 · Inkleaf
+  <h1>墨页 · Inkleaf</h1>
+  <p><strong>让文字，安静生长。</strong></p>
+  <p>A quiet place to read and write Markdown.</p>
 
-让文字，安静生长。
+  <p>
+    <a href="https://github.com/Fovercon/Inkleaf/releases/latest"><img src="https://img.shields.io/github/v/release/Fovercon/Inkleaf?style=flat-square&color=487052" alt="Latest release" /></a>
+    <a href="https://github.com/Fovercon/Inkleaf/actions/workflows/linux.yml"><img src="https://github.com/Fovercon/Inkleaf/actions/workflows/linux.yml/badge.svg?branch=main" alt="Linux validation" /></a>
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-487052?style=flat-square" alt="macOS and Linux" />
+    <img src="https://img.shields.io/badge/built%20with-Electron%20%2B%20TypeScript-2C342E?style=flat-square" alt="Electron and TypeScript" />
+  </p>
 
-面向 macOS 与 Linux 的个人 Markdown 阅读与编辑器。暖白纸面、墨色文字与叶绿色点缀，让阅读与写作回归舒适、专注。
+  <p>
+    <a href="https://github.com/Fovercon/Inkleaf/releases/latest">下载安装</a> ·
+    <a href="#功能亮点">功能亮点</a> ·
+    <a href="docs/INSTALLATION.md">安装指南</a> ·
+    <a href="CONTRIBUTING.md">构建与贡献</a> ·
+    <a href="https://github.com/Fovercon/Inkleaf/issues">反馈问题</a>
+  </p>
+</div>
 
-![墨页 · Inkleaf 阅读与编辑界面](docs/images/workspace.png)
+---
 
-## 快速开始
+Inkleaf 是一款面向 macOS 与 Linux 的 Markdown 阅读与编辑器。暖白纸面、墨色文字与叶绿色点缀，让阅读、写作和整理笔记拥有一个舒适、专注的空间。
 
-源码开发需要 Node.js 与 npm。Linux 还需要 GCC，每次 `build`、`start` 或 UI 测试都会编译原生更新助手，可先运行 `sudo apt install build-essential`；构建安装包另需 `dpkg` 和 `fpm`。下载好的 `.deb` 或 AppImage 已包含运行时与助手，日常运行不需要安装 Node.js 或 GCC。
+笔记以普通 Markdown 文件存放在本地。打开一个文件夹，即可把它作为书库；从一页文字开始，逐渐连接你的想法。
+
+![Inkleaf 编辑与阅读界面](docs/images/workspace.png)
+
+## 功能亮点
+
+| | 功能 | 说明 |
+| :-- | :-- | :-- |
+| 📖 | 阅读与写作 | 实时预览、双向滚动同步、多标签页、自动保存与会话恢复 |
+| 🌿 | 舒适排版 | 浅色、羊皮纸、护眼绿与深色主题，支持跟随系统与字号调整 |
+| 🗂️ | 本地书库 | 文件树、最近打开、拖拽整理、新建、重命名与系统废纸篓 |
+| 🔎 | 快速查找 | 文件快速切换、全文搜索、正则搜索与可跳转大纲 |
+| 🔗 | 连接笔记 | 双链、反向链接、标签索引与文档名补全 |
+| 🧮 | 丰富内容 | GFM 表格、任务列表、代码高亮、KaTeX 公式、Mermaid 图表与 callout |
+| 🖼️ | 图片体验 | 本地图片预览、粘贴插图、缩放灯箱与加载失败提示 |
+| 📄 | 导出与扩展 | PDF、独立 HTML 导出，以及隔离运行的外部插件 |
+
+<details>
+<summary><strong>查看欢迎页与深色主题</strong></summary>
+
+![Inkleaf 欢迎页](docs/images/welcome.png)
+
+![Inkleaf 深色主题](docs/images/dark.png)
+
+</details>
+
+## 下载安装
+
+前往 **[GitHub Releases](https://github.com/Fovercon/Inkleaf/releases/latest)**，选择与你的系统和处理器对应的附件。
+
+| 系统 | 架构 | 安装包 | 使用方式 |
+| :-- | :-- | :-- | :-- |
+| macOS | Apple Silicon / ARM64 | `.zip` | 解压后将 `Inkleaf.app` 拖入「应用程序」 |
+| Ubuntu / Debian | x64、ARM64 | `.deb` | 使用系统包管理器安装，推荐桌面用户使用 |
+| Linux | x64、ARM64 | `.AppImage` | 赋予执行权限后运行 |
+
+正式安装包的版本与可用平台以 Releases 附件为准。Ubuntu 22.04 x64、Ubuntu 24.04 x64 和 ARM64 纳入自动化验证；Debian 尚未单独实测。macOS 当前构建未经过 Developer ID 签名与公证，首次打开可能需要按系统安全提示授权。
+
+完整命令、系统依赖和常见问题见 [安装指南](docs/INSTALLATION.md)。
+
+## 开始使用
+
+1. 点击 **打开书库**，选择存放 Markdown 文件的文件夹。
+2. 从左侧文件树选择文档，在编辑与阅读面板之间自由切换。
+3. 使用 `[[文档名]]` 连接笔记，用标签和搜索定位内容。
+4. 在菜单中导出 PDF 或 HTML，分享你的文字。
+
+本地图片可使用相对路径、绝对路径或 `file://` 地址。将图片放在当前书库或已打开文档的文件夹内；遇到路径、权限或解码问题时，预览会显示具体原因。
+
+## 常用快捷键
+
+| 操作 | macOS | Linux |
+| :-- | :-- | :-- |
+| 打开文件 / 书库 | `⌘ O` / `⌘ ⇧ O` | `Ctrl O` / `Ctrl Shift O` |
+| 保存 | `⌘ S` | `Ctrl S` |
+| 快速切换文件 | `⌘ P` | `Ctrl P` |
+| 全文搜索 | `⌘ ⇧ F` | `Ctrl Shift F` |
+| 新标签页打开文件 | `⌘ T` | `Ctrl T` |
+| 关闭标签页 | `⌘ ⇧ W` | `Ctrl Shift W` |
+| 显示 / 隐藏书库 | `⌘ \` | `Ctrl \` |
+| 导出 PDF / HTML | `⌘ ⇧ P` / `⌘ ⇧ H` | `Ctrl Shift P` / `Ctrl Shift H` |
+| 专注模式 | `⌘ ⇧ D` | `Ctrl Shift D` |
+
+## 软件更新
+
+macOS 与 Linux AppImage 支持在软件内检查和下载正式新版本，确认后安装并重启。更新包会核对 SHA-256、应用标识、版本和处理器架构。
+
+通过 `.deb` 安装的应用会提供新版下载入口，随后由系统包管理器完成更新。软件只读取已公开的正式 Release；草稿与预发布版本不会进入更新渠道。
+
+## 从源码运行
+
+需要 Node.js 22、npm 及对应系统的原生编译工具。
 
 ```bash
-npm install       # 安装依赖（.npmrc 已配置国内镜像）
-npm start         # 开发模式启动
-npm run test:ui   # 使用独立配置和测试书库副本，回归验证并截图到 verify/
-npm run test:regressions # 文档保存、索引安全、插件生命周期与异步预览回归
-npm run test:doc-session-ui # 独立界面验证标签恢复、文件变化和保存失败
-npm run test:plugin-dom-ui # 真实 DOM 验证插件后处理、公式布局和交互
-npm run test:bug-tickets-ui # 首次开库、切换书库和本地图片的真实界面验收
-npm run test:ui-failure # 人为制造失败，确认测试返回非零而不会报告成功
-npm run package   # 生成图标并打包 dist/mac-arm64/Inkleaf.app
-npm run release:build # 构建 app，以及供软件内更新使用的 ZIP 和 SHA-256 文件
-npm run release:linux # 在原生 Linux x64/arm64 上构建 AppImage、deb 与 SHA-256 文件
+git clone --branch dev https://github.com/Fovercon/Inkleaf.git
+cd Inkleaf
+npm ci
+npm start
 ```
 
-把 `Inkleaf.app` 拖入 `/Applications` 即可日常使用；Finder 中右键任意 `.md` 文件 → 打开方式 → 墨页 · Inkleaf。
+`dev` 用于日常开发；`main` 用于整理与验证正式发布源码。测试、目录说明和分支协作方式见 [贡献指南](CONTRIBUTING.md)，维护者发布步骤见 [发布指南](docs/RELEASING.md)。
 
-Linux 的界面测试需要桌面会话或 `xvfb-run`。外部插件在独立沙箱 iframe 中运行，目前开放命令、DOM 后处理和代码块处理器；直接访问宿主 DOM、文件接口、MarkdownIt 实例和同步 `when` 的旧插件需要改用隔离接口。内置阅读、编辑和 callout 功能继续使用应用自带的实现。
+## 反馈与贡献
 
-打开书库后会直接显示左侧文件树；从菜单、拖拽或系统打开库外文档时，书库会切换到该文档所在文件夹。预览支持本地图片的相对路径、绝对路径和 `file://` 地址，允许访问当前书库及已打开文档的文件夹；其他位置的图片需放入这些文件夹。图片不存在、读取被拒或内容损坏时，会显示文件路径和原因，便于核对。
+欢迎通过 [Issues](https://github.com/Fovercon/Inkleaf/issues) 提交问题或建议。报告问题时，请提供应用版本、系统与架构、复现步骤；分享截图和示例文件前，请移除私人内容。
 
-### Linux 安装
+技术基础：Electron、TypeScript、CodeMirror 6、markdown-it、DOMPurify、KaTeX、Mermaid 与 esbuild。
 
-从 [GitHub Releases](https://github.com/Fovercon/Inkleaf/releases/latest) 下载安装包。0.3.0 提供 x64 与 arm64 的 AppImage 和 Debian 安装包，已通过 Ubuntu 22.04 x64、Ubuntu 24.04 x64 与 Ubuntu 24.04 arm64 验证；Debian 建议使用 12 或更新版本，尚未单独实测 Debian。旧版 glibc 系统不在本次兼容性承诺中。Ubuntu/Debian 桌面优先安装 `.deb`，会添加应用菜单入口与 Markdown 文件关联：
+## 许可证
 
-```bash
-sudo apt install ./Inkleaf-0.3.0-linux-x64.deb
-inkleaf /path/to/document.md
-```
+项目当前标记为 **UNLICENSED**，尚未采用开源许可证。仓库公开不代表授予使用、修改或分发授权；第三方依赖遵循各自的许可证。
 
-便携使用可以下载 AppImage，赋予执行权限后直接启动；arm64 机器把文件名中的 `x64` 换成 `arm64`：
+---
 
-```bash
-chmod +x Inkleaf-0.3.0-linux-x64.AppImage
-./Inkleaf-0.3.0-linux-x64.AppImage
-```
-
-AppImage 的 FUSE 运行方式需要 FUSE 2 兼容库（Ubuntu 22.04 的 `libfuse2`，Ubuntu 24.04 的 `libfuse2t64`）。Ubuntu 24.04 的 AppArmor 可能限制便携应用创建用户命名空间；遇到沙箱启动错误时，请优先安装 `.deb`。正常安装的 `.deb` 会为 root 所有的 Chromium 沙箱助手设置正确权限，保留浏览器沙箱。CI 对便携版使用仅针对 Inkleaf 路径的测试配置，不能据此承诺任意 Ubuntu 24.04 桌面默认配置都能直接运行 AppImage。
-
-Linux 使用 Ctrl 快捷键与系统窗口边框，支持从命令行、文件管理器或「打开方式」打开 Markdown 文件。原有阅读、编辑、搜索、主题、图片和 PDF/HTML 导出功能保持同一套界面。
-
-## 软件内更新
-
-已打包的应用会在启动后检查 [GitHub Releases](https://github.com/Fovercon/Inkleaf/releases) 中的正式新版本，也可以通过菜单或工具栏的「检查更新…」手动检查。macOS 应用与 Linux AppImage 可以在软件里下载；下载完成并确认重启后，应用会替换自身并重新打开。更新包会核对 GitHub 提供的 SHA-256 摘要、应用标识、版本与 CPU 架构。书库、Markdown 文件与原有设置继续保留。
-
-Linux `.deb` 由系统包管理器安装，软件只检查新版本并提供下载入口，随后使用 `apt install ./新版本.deb` 更新；不会让应用自行替换系统目录。AppImage 的软件内更新要求文件和所在目录可由当前用户写入。
-
-macOS 0.1.0 没有更新器，需要先手动安装一次 0.2.2 或更新版本。0.2.2 修复了 0.2.0/0.2.1 在 GitHub 下载重定向时可能失败的问题；如果旧版无法完成下载，也可以直接安装新版。开发模式不执行更新；草稿和预发布版本不会进入更新渠道。macOS 目前提供 Apple Silicon（arm64）更新包，应用目录需要当前用户拥有写入权限。
-
-这是为已经在这台 Mac 上允许运行的 Inkleaf 提供的个人自助更新方式。当前构建没有 Apple Developer ID 签名与公证，更新器不会关闭 Gatekeeper，也不会移除下载文件的隔离属性；如果 macOS 拦截新版，按系统的「隐私与安全性」提示操作。面向公开分发时，应为应用添加 [Developer ID 签名与 Apple 公证](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)。
-
-## 发布新版本
-
-将 `package.json` 和 `package-lock.json` 的项目版本一起升级（例如 0.3.1），提交修改后推送对应的 `v0.3.1` 标签。标签版本必须与 `package.json` 完全相同，发布渠道仅接受 `x.y.z` 正式版本。
-
-仓库的「Build release」工作流同时构建 macOS arm64、Linux x64 与 Linux arm64。Linux 在真实 Ubuntu runner 上运行原有 UI 回归、平台快捷键检查，并验证打包的 AppImage 和实际安装的 `.deb`；另外复用 Ubuntu 22.04 的 x64 产物在 Ubuntu 24.04 再次验证。所有平台通过后，由一个发布任务汇总完整附件并生成同一份 Release 草稿。以 0.3.0 为例：
-
-- `Inkleaf-0.3.0-mac-arm64.zip`：ZIP 根目录是 `Inkleaf.app`，保留应用包的符号链接。
-- `Inkleaf-0.3.0-linux-x64.AppImage` / `.deb`：x64 便携版与 Debian 安装包。
-- `Inkleaf-0.3.0-linux-arm64.AppImage` / `.deb`：arm64 便携版与 Debian 安装包。
-- 每个附件都有同名 `.sha256` 文件，供手动下载时核对。
-
-推送标签默认生成 GitHub Release **草稿**。检查完整的平台附件与版本说明后，在 GitHub 点击「Publish release」即可让软件发现更新；也可以手动运行工作流，填写现有标签并勾选 `publish`，待全部平台验证通过后再统一发布。重跑工作流可以补齐或重建同一草稿的附件，已经发布的版本会拒绝覆盖，修复应发布新的版本号。客户端只读取公开的正式 Release，无需登录 GitHub，应用中不包含发布令牌。
-
-也可以在本机准备同样的附件：
-
-```bash
-npm run typecheck
-npm run test:updates
-npm run test:platform
-# macOS arm64
-npm run release:build
-# 或在对应架构的原生 Linux 上构建；需要 gcc、dpkg 与 fpm 打包工具
-npm run release:linux -- --arch x64
-npm run release:linux -- --arch arm64
-cd dist
-shasum -a 256 -c Inkleaf-0.3.0-mac-arm64.zip.sha256
-# Linux：sha256sum -c Inkleaf-0.3.0-linux-x64.AppImage.sha256
-```
-
-本机构建命令只生成文件，不上传或发布。Linux 构建要求宿主架构与目标一致，确保更新助手和实际启动检查使用同一架构。发布时将全部五个应用附件与校验文件一起上传到同版本 Release；发布脚本核对完整附件集、本地 SHA-256 和 GitHub 返回的资产摘要，避免把半成品标为最新版本。客户端使用 GitHub API 返回的资产摘要核验下载，而非把旁边的校验文本文件作为独立信任来源。
-
-## 视觉设计
-
-- 暖白纸面 `#FBF9F4`、墨色文字 `#2C342E`、叶绿点缀 `#487052`。
-- 书页与叶片标识、统一 SVG 线条图标、宋体标题与清晰的面板层级。
-- 欢迎页、书库、编辑器、阅读预览、大纲与底部状态栏采用一致的配色。
-- 保留五套主题和字号调节；小窗口自动分配面板空间，键盘焦点清晰可见。
-
-![欢迎页](docs/images/welcome.png)
-
-![深色主题](docs/images/dark.png)
-
-应用图标将展开的书页与绿叶融为一体，采用暖白底色和轻微纸张折叠质感。源图稿保存在 `build/inkleaf-icon.png`；运行 `npm run icon` 可生成包含 16–1024 像素资源的 `build/icon.icns`。图稿由内置 ImageGen 生成，完整提示词见 [icon-prompt.txt](build/icon-prompt.txt)。
-
-## 功能总览
-
-**阅读**
-- 文件夹书库：文件树（展开状态记忆）、最近文件、树内过滤（高亮匹配）
-- 渲染：GFM 表格/任务列表、代码高亮、KaTeX 数学公式、Mermaid 图表（懒加载 + 缓存）、相对路径图片（`mdasset://` 安全协议）
-- 排版：16px 正文 / 1.8 行高，图片点击全屏灯箱（滚轮缩放、拖拽平移）
-- 大纲：折叠子树、点击跳转、滚动跟随高亮
-- 面包屑：点击文件夹在树中展开定位；返回顶部按钮
-- 主题：自动 / 浅色 / 羊皮纸 / 护眼绿 / 深色；字号缩放 80%–160%
-
-**编辑**
-- CodeMirror 6 编辑器，GFM 语法高亮，⌘S + 2 秒自动保存（macOS 原生未保存圆点）
-- 快捷键：⌘B 加粗 / ⌘I 斜体 / ⌘E 行内代码 / ⇧⌘K 代码块 / ⌘K 链接（智能切换）
-- 列表 Enter 自动续行、Tab/⇧Tab 缩进；任务复选框点击回写源码
-- 粘贴图片自动存 `assets/paste-时间戳.png` 并插入引用
-- 编辑 ⇄ 预览双向滚动同步；字数与行列统计
-
-**文件管理**
-- 右键：新建文件/文件夹（行内命名）、重命名（路径级联联动）、删除（系统废纸篓）、系统文件管理器定位
-- 拖拽：文件拖入文件夹整理；外部文件夹/文件拖入窗口打开
-
-**搜索**
-- ⌘P 快速切换：文件名模糊匹配（评分排序 + 字符高亮），空查询显示最近
-- ⇧⌘F 全书库全文搜索：按文件分组、行号 + 关键词高亮、点击直达行
-
-**导出**
-- ⇧⌘P 导出 PDF（A4、打印背景、分页防截断）
-- ⇧⌘H 导出单文件 HTML（样式 + 图片 + KaTeX 字体全部内嵌，零依赖）
-
-**macOS 集成**
-- `.md`/`.markdown` 文件关联、Dock 菜单（含最近文件）、标题栏代理文件图标、自定义应用图标
-
-## 快捷键速查
-
-下表使用 macOS 符号；Linux 将 ⌘ 换为 Ctrl、⇧ 换为 Shift，例如保存是 Ctrl+S，全文搜索是 Ctrl+Shift+F。
-
-| 快捷键 | 功能 | | 快捷键 | 功能 |
-|---|---|---|---|---|
-| ⌘O / ⇧⌘O | 打开文件/文件夹 | | ⌘P | 快速切换文件 |
-| ⌘N | 新建文件 | | ⇧⌘F | 全文搜索 |
-| ⌘S | 保存 | | ⇧⌘P / ⇧⌘H | 导出 PDF/HTML |
-| ⌘\ ⌘1 ⌘2 ⌘3 | 切换书库/编辑/预览/大纲 | | ⌘= ⌘- ⌘0 | 字号缩放 |
-| ⌘B ⌘I ⌘E ⌘K | 加粗/斜体/代码/链接 | | ⇧⌘W | 关闭书库 |
-
-## 架构
-
-```
-src/main       Electron 主进程：窗口、菜单、文件 IPC、chokidar 监听、
-               mdasset/app 自定义协议、打印导出、Dock 菜单、会话
-src/preload    contextBridge 安全 API（contextIsolation 开启）
-src/renderer   渲染层（无框架 TypeScript）：
-               main 布局总装 / fileTree / editor(CodeMirror) /
-               preview(markdown-it 管线) / outline / lightbox /
-               commandPalette / export / theme / state
-```
-
-技术栈：Electron + TypeScript + esbuild；CodeMirror 6；markdown-it + DOMPurify + highlight.js + KaTeX + Mermaid（懒加载分包）；chokidar；electron-builder。
-
-安全：contextIsolation、CSP、DOMPurify 消毒、`mdasset://` 协议限定书库根目录内。
-
-## 迭代历史
-
-项目经 10 轮自动化迭代打磨，过程记录见 [ITERATION-LOG.md](ITERATION-LOG.md)，每轮均有截图证据（verify/）与 git 提交。
-
-| 轮 | 主题 | 轮 | 主题 |
-|---|---|---|---|
-| 0 | MVP 基线 | 5 | 全文搜索 + 快速切换 |
-| 1 | 阅读排版 + 图片灯箱 | 6 | 导出 PDF / HTML |
-| 2 | 编辑体验 + 任务回写 + 贴图 | 7 | 五套主题 + 字号缩放 |
-| 3 | 导航：面包屑/最近/大纲折叠 | 8 | 性能（缓存/防抖/双渲染修复） |
-| 4 | 文件管理：重命名/删除/过滤 | 9 | macOS 原生集成 |
-|  |  | 10 | 终检 + 树内拖拽 + 交付 |
+<div align="center">
+  <sub>Read slowly. Write freely.</sub>
+</div>

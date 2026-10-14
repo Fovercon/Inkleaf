@@ -1,8 +1,8 @@
 /**
- * 插件宿主（主进程侧 · docs/04 §六）：
+ * 主进程插件宿主：扫描插件声明并提供受限的入口协议。
  * - pluginsRoot：userData/plugins 目录
  * - plugins:list：扫描合法 manifest 返回声明（含 inkplug:// 入口 URL）
- * - 路径穿越防护由协议处理器（index.ts inkplug://）执行
+ * - 路径穿越与符号链接防护由 inkplug:// 协议处理器执行
  */
 import { app, ipcMain } from 'electron'
 import fs from 'node:fs/promises'

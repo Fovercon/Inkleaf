@@ -784,7 +784,7 @@ async function createWindow() {
         const stabilityCheck = await win.webContents.executeJavaScript(`
           (async () => {
             try {
-              // --- ST3: 编辑旅行计划 → 切走再切回，内容与脏状态保全 ---
+              // 编辑文档后切走再切回，检查内容与脏状态是否保留。
               document.querySelector('.tree-row[data-path$="旅行计划.md"]')?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
               await new Promise(r => setTimeout(r, 1400));
               document.dispatchEvent(new CustomEvent('mdr-test-type', {detail: {text: 'ST3MARK'}}));
@@ -803,7 +803,7 @@ async function createWindow() {
                 && document.getElementById('file-title')?.textContent === '旅行计划.md';
               // 清理：删掉标记（通过命令面板不可行——直接编辑器选中末尾删除：撤销即可）
               document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: '__noop__'}}));
-              // --- ST5: 剪贴板贴图（合成 ClipboardEvent） ---
+              // 合成 ClipboardEvent，检查剪贴板贴图。
               let pasteOk = false;
               try {
                 const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -818,21 +818,21 @@ async function createWindow() {
                 const src = document.querySelector('.cm-content')?.textContent ?? '';
                 pasteOk = src.includes('assets/paste-');
               } catch (e) { pasteOk = false; }
-              // --- ST4 由主进程侧核对 session.json ---
+              // 会话文件由主进程侧核对。
               return JSON.stringify({preserved, pasteOk, returnedState, returnedDirty, savedMarker: diskText.includes('ST3MARK')});
             } catch (err) {
               return JSON.stringify({error: String(err)});
             }
           })()
         `)
-        // ST3 现场恢复：旅行计划文档的 ST3MARK 需要从磁盘撤销——读原文重写
+        // 重写原始文档内容，清除测试插入的标记。
         const st = JSON.parse(stabilityCheck)
         // 等自动保存落盘后还原（贴图/输入已触发保存计时器）
         await new Promise((r) => setTimeout(r, 2600))
         fs.writeFileSync(tripPath, tripOriginal)
         const readmeOriginal = fs.readFileSync(path.join(testLibrary, 'README.md'), 'utf8')
         fs.writeFileSync(path.join(testLibrary, 'README.md'), readmeOriginal)
-        // ST4: session.json 应含 tabs 数组
+        // 会话文件应包含标签页数组。
         const sessionFile = path.join(app.getPath('userData'), 'session.json')
         let tabsPersisted = false
         try {

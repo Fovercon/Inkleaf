@@ -1,7 +1,7 @@
 /**
- * IPC 契约中心 —— 通道名单一事实来源（docs/04 §六）。
+ * IPC 契约中心：集中定义通道名与跨进程载荷类型。
  * 主进程 handler 与 preload 桥必须从此处引用通道名与载荷类型，禁止手写字符串。
- * 注意：update:* 家族暂随 updater 模块管理（见 main/updater.ts），待其稳定后并入。
+ * update:* 通道由 main/updater.ts 管理，相关类型见 shared/updates.ts。
  */
 
 // ---------- 跨进程载荷类型 ----------

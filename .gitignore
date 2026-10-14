@@ -6,5 +6,20 @@ build/icon-base.png
 *.log
 .DS_Store
 
-# Current visual QA captures; selected screenshots live in docs/images.
-verify/roundinkleaf*.png
+# Generated test artifacts; product screenshots are curated in docs/images.
+verify/
+test-library/assets/img-*.png
+.linux-appimage-smoke/
+
+# Local agent plans and editor state.
+.zcode/
+.zcodeignore
+.agents/
+.codex/
+.vscode/
+.idea/
+
+# Local credentials and environment files.
+.env
+.env.*
+!.env.example
