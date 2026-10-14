@@ -510,6 +510,26 @@ async function createWindow() {
           })()
         `)
         console.log(`[insert-image-check] ${insertResult}`)
+        // render-completeness check: callout / footnote / definition list
+        const renderCheck = await win.webContents.executeJavaScript(`
+          (() => {
+            const callout = document.querySelector('#preview blockquote.md-callout')
+            const warn = document.querySelector('#preview blockquote.md-callout-warning')
+            const footnoteRef = document.querySelector('#preview .footnote-ref, #preview sup a.footnote-ref')
+            const footnotes = document.querySelector('#preview .footnotes, #preview section.footnotes')
+            const deflist = document.querySelector('#preview dl')
+            return JSON.stringify({
+              callout: !!callout,
+              title: callout?.getAttribute('data-callout-title') ?? null,
+              warning: !!warn,
+              footnote: !!footnoteRef,
+              footnotes: !!footnotes,
+              deflist: !!deflist,
+            })
+          })()
+        `)
+        const rc = JSON.parse(renderCheck)
+        console.log(`[render-check] callout=${rc.callout} title=${rc.title} warning=${rc.warning} footnote=${rc.footnote}/${rc.footnotes} deflist=${rc.deflist} ${rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist ? 'OK' : 'FAIL'}`)
         // theme & font scale verification
         await win.webContents.executeJavaScript(
           `document.dispatchEvent(new CustomEvent('mdr-test-theme', {detail: ${JSON.stringify({ theme: 'sepia' })}}))`,

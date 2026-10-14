@@ -46,13 +46,19 @@
       }
     ],
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "build/inkleaf-icon.png",
       "executableName": "inkleaf",
       "category": "Office",
       "maintainer": "Fovercon <fovercon@users.noreply.github.com>",
       "artifactName": "Inkleaf-${version}-linux-${arch}.${ext}",
-      "mimeTypes": ["text/markdown", "text/x-markdown"],
+      "mimeTypes": [
+        "text/markdown",
+        "text/x-markdown"
+      ],
       "desktop": {
         "Name": "墨页 · Inkleaf",
         "Comment": "A quiet place to read and write Markdown",
@@ -60,12 +66,24 @@
       }
     },
     "appImage": {
-      "executableArgs": ["--ozone-platform-hint=auto"]
+      "executableArgs": [
+        "--ozone-platform-hint=auto"
+      ]
     },
     "deb": {
       "afterInstall": "scripts/linux-after-install.sh",
       "afterRemove": "scripts/linux-after-remove.sh",
-      "depends": ["libgtk-3-0", "libnss3", "libxss1", "libxtst6", "libatspi2.0-0", "libuuid1", "libgbm1", "libasound2 | libasound2t64", "xdg-utils"]
+      "depends": [
+        "libgtk-3-0",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "libatspi2.0-0",
+        "libuuid1",
+        "libgbm1",
+        "libasound2 | libasound2t64",
+        "xdg-utils"
+      ]
     },
     "mac": {
       "category": "public.app-category.productivity",
@@ -107,6 +125,8 @@
     "highlight.js": "^11.11.1",
     "katex": "^0.16.21",
     "markdown-it": "^14.1.0",
+    "markdown-it-deflist": "^4.0.0",
+    "markdown-it-footnote": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^11.4.1",
     "yauzl": "^3.4.0"

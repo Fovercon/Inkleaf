@@ -77,6 +77,58 @@
 }
 .md-preview blockquote p { margin: 0.55em 0; }
 
+/* ---------- callouts (Obsidian-compatible) ---------- */
+.md-preview blockquote.md-callout {
+  --callout-accent: var(--accent);
+  border-left: 4px solid var(--callout-accent);
+  background: color-mix(in srgb, var(--callout-accent) 7%, transparent);
+  color: var(--text);
+}
+.md-preview blockquote.md-callout::before {
+  content: attr(data-callout-title);
+  display: block;
+  font-weight: 700;
+  font-size: 0.95em;
+  margin: 0.5em 0 0.25em;
+  color: var(--callout-accent);
+}
+.md-preview blockquote.md-callout > p:first-child:empty { display: none; }
+.md-preview blockquote.md-callout > *:last-child { margin-bottom: 0.3em; }
+.md-callout-note, .md-callout-abstract, .md-callout-summary, .md-callout-tldr, .md-callout-todo { --callout-accent: #3563e9; }
+.md-callout-info { --callout-accent: #0e7fd6; }
+.md-callout-tip, .md-callout-hint, .md-callout-important { --callout-accent: #0d9463; }
+.md-callout-success, .md-callout-check, .md-callout-done { --callout-accent: #2f9e44; }
+.md-callout-question, .md-callout-help, .md-callout-faq { --callout-accent: #9c6ade; }
+.md-callout-warning, .md-callout-caution, .md-callout-attention { --callout-accent: #e8a000; }
+.md-callout-danger, .md-callout-error, .md-callout-bug { --callout-accent: #d05050; }
+.md-callout-example { --callout-accent: #b0563c; }
+.md-callout-quote, .md-callout-cite { --callout-accent: #6b7280; }
+
+/* ---------- footnotes ---------- */
+.md-preview .footnotes {
+  margin-top: 2.5em;
+  font-size: 0.88em;
+  color: var(--text-dim);
+}
+.md-preview .footnotes hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.2em 0;
+}
+.md-preview .footnotes ol { padding-left: 1.4em; }
+.md-preview .footnotes li { margin: 0.3em 0; }
+.md-preview sup.footnote-ref a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.78em;
+  padding: 0 1px;
+}
+
+/* ---------- definition lists ---------- */
+.md-preview dl { margin: 1em 0; }
+.md-preview dt { font-weight: 700; margin-top: 0.7em; }
+.md-preview dd { margin: 0.15em 0 0.3em 1.6em; }
+
 /* ---------- code ---------- */
 .md-preview code {
   font-family: var(--font-mono);
