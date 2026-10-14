@@ -9,8 +9,10 @@ export interface UiState {
   focusMode: boolean
   /** keep the cursor vertically centered while typing */
   typewriter: boolean
-  collapsed: Record<PaneKey, boolean>
-  widths: { sidebar: number; editor: number; outline: number }
+  /** 面板开合状态（键为面板 id；面板注册表可动态扩展） */
+  collapsed: Record<string, boolean>
+  /** 面板宽度（键为面板 id） */
+  widths: Record<string, number>
   expandedDirs: string[]
   recent: string[]
   scrollByPath: Record<string, number>

@@ -16,6 +16,7 @@ import { setupUpdater } from './updater'
 import { setupPlatformUi } from './platform'
 import { registerCommand, runCommand } from './commands'
 import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
+import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
 
@@ -45,35 +46,77 @@ let session: Record<string, unknown> = {}
 
 // ---------------- layout ----------------
 
+/** 编辑区分隔条：编辑区宽度有 fill/缩放专用逻辑，不进面板注册表 */
+function attachEditorResizer() {
+  const handle = $('#resizer-editor')
+  handle.addEventListener('pointerdown', (e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = editorPane.getBoundingClientRect().width
+    handle.setPointerCapture(e.pointerId)
+    handle.classList.add('active')
+    const move = (ev: PointerEvent) => {
+      const w = Math.round(Math.min(1400, Math.max(240, startW + ev.clientX - startX)))
+      editorPane.style.width = `${w}px`
+    }
+    const up = () => {
+      handle.releasePointerCapture(e.pointerId)
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.classList.remove('active')
+      getState().widths.editor = Math.round(editorPane.getBoundingClientRect().width)
+      saveState()
+      applyLayout()
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+  })
+}
+
+/** 声明式注册侧栏面板：内置两块，插件面板同源（docs/04 §五 L4） */
+function registerBuiltinPanels() {
+  const sidebarPanel: PanelDef = {
+    id: 'sidebar', slot: 'left', el: sidebar, resizer: $('#resizer-sidebar'),
+    min: 160, max: 480, defaultWidth: 224,
+    onLayout: (c) => {
+      $('#sidebar-collapse').classList.toggle('pane-collapsed', c)
+      $('#sidebar-expand').classList.toggle('visible', c)
+    },
+  }
+  registerPanel(sidebarPanel)
+  registerPanel({
+    id: 'outline', slot: 'right', el: outlinePane, resizer: $('#resizer-outline'),
+    min: 160, max: 420, defaultWidth: 184,
+  })
+}
+
 function applyLayout() {
   const s = getState()
-  sidebar.classList.toggle('pane-collapsed', s.collapsed.sidebar)
-  editorPane.classList.toggle('pane-collapsed', s.collapsed.editor)
-  previewPane.classList.toggle('pane-collapsed', s.collapsed.preview)
-  outlinePane.classList.toggle('pane-collapsed', s.collapsed.outline)
+  const collapsed = (id: string) => !!s.collapsed[id]
+  editorPane.classList.toggle('pane-collapsed', collapsed('editor'))
+  previewPane.classList.toggle('pane-collapsed', collapsed('preview'))
   // Keep all four panes usable when the window is narrowed, without changing
   // the user's saved widths for the next full-size window.
   const width = $('#workspace').clientWidth
-  const desiredWidth = (s.collapsed.sidebar ? 0 : s.widths.sidebar)
-    + (s.collapsed.outline ? 0 : s.widths.outline)
-    + (!s.collapsed.editor && !s.collapsed.preview ? s.widths.editor : 0)
+  const panelWidth = (p: PanelDef) => s.widths[p.id] ?? p.defaultWidth
+  let desiredWidth = !collapsed('editor') && !collapsed('preview') ? s.widths.editor : 0
+  for (const p of listPanels()) if (!collapsed(p.id)) desiredWidth += panelWidth(p)
   const scale = Math.min(1, Math.max(0, width - 260) / Math.max(1, desiredWidth))
-  const sidebarWidth = s.widths.sidebar * scale
-  const outlineWidth = s.widths.outline * scale
-  sidebar.style.width = s.collapsed.sidebar ? '' : `${sidebarWidth}px`
+  for (const p of listPanels()) {
+    const c = collapsed(p.id)
+    p.el.classList.toggle('pane-collapsed', c)
+    p.el.style.width = c ? '' : `${Math.round(panelWidth(p) * scale)}px`
+    p.resizer.classList.toggle('pane-collapsed', c)
+    p.onLayout?.(c)
+    $(`#btn-toggle-${p.id}`)?.setAttribute('aria-pressed', String(!c))
+  }
   // with the preview hidden the editor takes over the full area
-  const editorFills = s.collapsed.preview && !s.collapsed.editor
+  const editorFills = collapsed('preview') && !collapsed('editor')
   editorPane.classList.toggle('fill', editorFills)
   editorPane.style.width = editorFills ? '' : `${s.widths.editor * scale}px`
-  outlinePane.style.width = `${outlineWidth}px`
-  $('#resizer-sidebar').classList.toggle('pane-collapsed', s.collapsed.sidebar)
-  $('#resizer-editor').classList.toggle('pane-collapsed', s.collapsed.editor || s.collapsed.preview)
-  $('#resizer-outline').classList.toggle('pane-collapsed', s.collapsed.outline)
-  $('#sidebar-collapse').classList.toggle('pane-collapsed', s.collapsed.sidebar)
-  $('#sidebar-expand').classList.toggle('visible', s.collapsed.sidebar)
-  for (const key of ['sidebar', 'editor', 'preview', 'outline'] as const) {
-    $(`#btn-toggle-${key}`).setAttribute('aria-pressed', String(!s.collapsed[key]))
-  }
+  $('#resizer-editor').classList.toggle('pane-collapsed', collapsed('editor') || collapsed('preview'))
+  $('#btn-toggle-editor').setAttribute('aria-pressed', String(!collapsed('editor')))
+  $('#btn-toggle-preview').setAttribute('aria-pressed', String(!collapsed('preview')))
   emptyState.classList.toggle('visible', !runtime.currentFile)
 }
 
@@ -87,31 +130,6 @@ function togglePane(key: PaneKey) {
   s.collapsed[key] = !s.collapsed[key]
   saveState()
   applyLayout()
-}
-
-function setupResizer(handle: HTMLElement, pane: HTMLElement, key: 'sidebar' | 'editor' | 'outline', min: number, max: number) {
-  handle.addEventListener('pointerdown', (e) => {
-    e.preventDefault()
-    const startX = e.clientX
-    const startW = pane.getBoundingClientRect().width
-    handle.setPointerCapture(e.pointerId)
-    handle.classList.add('active')
-    const move = (ev: PointerEvent) => {
-      const w = Math.round(Math.min(max, Math.max(min, startW + ev.clientX - startX)))
-      pane.style.width = `${w}px`
-    }
-    const up = () => {
-      handle.releasePointerCapture(e.pointerId)
-      handle.removeEventListener('pointermove', move)
-      handle.removeEventListener('pointerup', up)
-      handle.classList.remove('active')
-      getState().widths[key] = Math.round(pane.getBoundingClientRect().width)
-      saveState()
-      applyLayout()
-    }
-    handle.addEventListener('pointermove', move)
-    handle.addEventListener('pointerup', up)
-  })
 }
 
 // ---------------- files ----------------
@@ -582,6 +600,17 @@ async function boot() {
 
   setupActions()
   registerBuiltinCommands()
+  registerBuiltinPanels()
+  attachPanelResizers(
+    (id) => getState().widths[id] ?? getPanel(id)?.defaultWidth ?? 200,
+    (id, w) => {
+      getState().widths[id] = w
+    },
+    () => {
+      saveState()
+      applyLayout()
+    },
+  )
   applyFocusModes()
   editor.setTypewriter(getState().typewriter)
   setupFocusHighlight(previewScroll, preview)
@@ -629,9 +658,8 @@ async function boot() {
     })()
   })
 
-  setupResizer($('#resizer-sidebar'), sidebar, 'sidebar', 160, 480)
-  setupResizer($('#resizer-editor'), editorPane, 'editor', 240, 1400)
-  setupResizer($('#resizer-outline'), outlinePane, 'outline', 160, 420)
+  // 编辑器分隔条不属于面板注册表（编辑区宽度有专用逻辑），单独挂接
+  attachEditorResizer()
   window.addEventListener('resize', applyLayout)
 
   setupSync(editor, previewScroll, () => {
