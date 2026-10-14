@@ -126,47 +126,49 @@ export class EditorPane {
   mount(host: HTMLElement, dark: boolean) {
     this.view = new EditorView({
       parent: host,
-      state: EditorState.create({
-        doc: '',
-        extensions: [
-          basicSetup,
-          markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
-          EditorView.lineWrapping,
-          this.themeComp.of(dark ? oneDark : []),
-          // list nesting / selection indent (after basicSetup so it takes precedence)
-          keymap.of([
-            { key: 'Tab', run: indentMore, shift: indentLess },
-          ]),
-          EditorView.domEventHandlers({
-            paste: (event) => {
-              const items = event.clipboardData?.items
-              if (!items) return false
-              for (const item of items) {
-                if (item.type.startsWith('image/')) {
-                  const file = item.getAsFile()
-                  if (!file) continue
-                  event.preventDefault()
-                  void this.savePastedImage(file)
-                  return true
-                }
-              }
-              return false
-            },
-          }),
-          EditorView.updateListener.of((u) => {
-            if (u.docChanged && !this.loading) {
-              this.setDirty(true)
-              this.onDocChanged?.()
-              this.scheduleSave()
-            }
-            if (u.docChanged || u.selectionSet) {
-              this.reportStats()
-              if (this.typewriter) this.centerCursor()
-            }
-          }),
-        ],
-      }),
+      state: EditorState.create({ doc: '', extensions: this.stateExtensions(dark) }),
     })
+  }
+
+  /** 扩展集中定义：mount 与 loadState(fromJSON) 共用 */
+  private stateExtensions(dark = false) {
+    return [
+      basicSetup,
+      markdown({ base: markdownLanguage, codeLanguages: languages, addKeymap: true }),
+      EditorView.lineWrapping,
+      this.themeComp.of(dark ? oneDark : []),
+      // list nesting / selection indent (after basicSetup so it takes precedence)
+      keymap.of([
+        { key: 'Tab', run: indentMore, shift: indentLess },
+      ]),
+      EditorView.domEventHandlers({
+        paste: (event) => {
+          const items = event.clipboardData?.items
+          if (!items) return false
+          for (const item of items) {
+            if (item.type.startsWith('image/')) {
+              const file = item.getAsFile()
+              if (!file) continue
+              event.preventDefault()
+              void this.savePastedImage(file)
+              return true
+            }
+          }
+          return false
+        },
+      }),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && !this.loading) {
+          this.setDirty(true)
+          this.onDocChanged?.()
+          this.scheduleSave()
+        }
+        if (u.docChanged || u.selectionSet) {
+          this.reportStats()
+          if (this.typewriter) this.centerCursor()
+        }
+      }),
+    ]
   }
 
   setDarkTheme(dark: boolean) {
@@ -212,6 +214,29 @@ export class EditorPane {
   setTypewriter(on: boolean) {
     this.typewriter = on
     if (on) this.centerCursor()
+  }
+
+  /** 序列化当前编辑器状态（含撤销历史）——多标签切换保存用 */
+  exportState(): unknown {
+    return this.view ? this.view.state.toJSON() : null
+  }
+
+  /** 恢复编辑器状态；JSON 为空时置空文档 */
+  loadState(json: unknown): void {
+    if (!this.view) return
+    this.loading = true
+    try {
+      const state =
+        json && typeof json === 'object'
+          ? EditorState.fromJSON(json, { extensions: this.stateExtensions() })
+          : EditorState.create({ doc: '', extensions: this.stateExtensions() })
+      this.view.setState(state)
+    } catch {
+      this.view.setState(EditorState.create({ doc: '', extensions: this.stateExtensions() }))
+    } finally {
+      this.loading = false
+    }
+    this.reportStats()
   }
 
   private typewriter = false

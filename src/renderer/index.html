@@ -64,14 +64,19 @@
     <button id="sidebar-collapse" title="收起书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="收起书库栏"><svg class="icon"><use href="#i-left"/></svg></button>
   </aside>
   <div class="resizer" id="resizer-sidebar"></div>
-  <section id="editor-pane" aria-label="Markdown 编辑器"><div class="pane-heading"><span>编辑</span><small>MARKDOWN</small></div><div id="editor-host"></div></section>
-  <div class="resizer" id="resizer-editor"></div>
+  <div id="doc-wrap">
+    <div id="tabbar" role="tablist" aria-label="打开的文档"></div>
+    <div id="doc-body">
+      <section id="editor-pane" aria-label="Markdown 编辑器"><div class="pane-heading"><span>编辑</span><small>MARKDOWN</small></div><div id="editor-host"></div></section>
+      <div class="resizer" id="resizer-editor"></div>
   <section id="preview-pane" aria-label="阅读预览">
     <div class="pane-heading"><span>阅读</span><small>PREVIEW</small></div>
     <div id="breadcrumb"></div>
     <div id="preview-scroll"><div id="preview" class="md-preview"></div></div>
     <button id="back-top" title="返回顶部" aria-label="返回顶部"><svg class="icon"><use href="#i-up"/></svg></button>
   </section>
+    </div>
+  </div>
   <div class="resizer" id="resizer-outline"></div>
   <div id="right-panes">
   <aside id="outline-pane" aria-label="文档大纲">

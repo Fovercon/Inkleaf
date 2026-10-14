@@ -656,6 +656,38 @@ async function createWindow() {
         `)
         const tg = JSON.parse(tagCheck)
         console.log(`[tag-check] pane=${tg.paneExists} count=${tg.count} travel=${tg.hasTravel} filtered=${tg.filtered} tags=${JSON.stringify(tg.texts)} ${tg.paneExists && tg.hasTravel && tg.filtered ? 'OK' : 'FAIL'}`)
+        // multi-tab check: cmd-click opens a new tab, switching restores, close works
+        const tabCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              const bar = document.getElementById('tabbar');
+              const initial = bar ? bar.querySelectorAll('.doc-tab').length : -1;
+              // ⌘-click the tree file → new tab
+              const row = document.querySelector('.tree-row[data-path$="旅行计划.md"]');
+              row?.dispatchEvent(new MouseEvent('click', {bubbles: true, metaKey: true}));
+              await new Promise(r => setTimeout(r, 1500));
+              const afterOpen = bar ? bar.querySelectorAll('.doc-tab').length : -1;
+              const activeTitle = (document.getElementById('file-title')?.textContent ?? '');
+              // click back to the first tab
+              const tabs = bar ? [...bar.querySelectorAll('.doc-tab')] : [];
+              tabs[0]?.click();
+              await new Promise(r => setTimeout(r, 900));
+              const backTitle = (document.getElementById('file-title')?.textContent ?? '');
+              // close the second tab via its close button
+              const closeBtns = bar ? [...bar.querySelectorAll('.doc-tab .tab-close')] : [];
+              const beforeClose = bar ? bar.querySelectorAll('.doc-tab').length : -1;
+              if (closeBtns[0]) closeBtns[0].click();
+              await new Promise(r => setTimeout(r, 900));
+              const afterClose = bar ? bar.querySelectorAll('.doc-tab').length : -1;
+              return JSON.stringify({bar: !!bar, initial, afterOpen, activeTitle, backTitle, beforeClose, afterClose});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        const tb = JSON.parse(tabCheck)
+        const tabOk = tb.bar && tb.initial === 1 && tb.afterOpen === 2 && tb.activeTitle === '旅行计划.md' && tb.backTitle === 'README.md' && tb.afterClose === 1
+        console.log(`[tab-check] bar=${tb.bar} initial=${tb.initial} open=${tb.afterOpen}(${tb.activeTitle}) back=${tb.backTitle} close=${tb.beforeClose}->${tb.afterClose} ${tabOk ? 'OK' : 'FAIL'}`)
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {
@@ -763,6 +795,7 @@ function buildMenu() {
         { label: '新建文件', accelerator: 'CmdOrCtrl+N', click: () => send('new-file') },
         { type: 'separator' },
         { label: '快速切换文件…', accelerator: 'CmdOrCtrl+P', click: () => send('quick-switch') },
+        { label: '新标签页打开文件…', accelerator: 'CmdOrCtrl+T', click: () => send('new-tab') },
         { label: '在书库中搜索…', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('search') },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
@@ -770,7 +803,8 @@ function buildMenu() {
         { label: '导出为 PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: () => send('export-pdf') },
         { label: '导出为 HTML…', accelerator: 'CmdOrCtrl+Shift+H', click: () => send('export-html') },
         { type: 'separator' },
-        { label: '关闭书库', accelerator: 'CmdOrCtrl+Shift+W', click: () => send('close-library') },
+        { label: '关闭标签页', accelerator: 'CmdOrCtrl+Shift+W', click: () => send('close-tab') },
+        { label: '关闭书库', click: () => send('close-library') },
         { type: 'separator' },
         { role: 'close', label: '关闭窗口' },
       ],

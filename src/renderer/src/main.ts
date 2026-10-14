@@ -18,6 +18,7 @@ import { registerCommand, runCommand } from './commands'
 import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
 import { setWikilinkNav } from './wikilink'
 import { setBacklinkNav, refreshBacklinks } from './backlink'
+import { TabManager } from './docSession'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
@@ -41,6 +42,13 @@ function escapeHtml(s: string): string {
 
 const editor = new EditorPane()
 const tree = new FileTree(treeHost)
+const tabs = new TabManager()
+tabs.onTabsChanged = () => {
+  renderTabs()
+  session.tabs = tabs.paths()
+  session.activeIndex = tabs.activeIndex
+  persistSession()
+}
 
 let renderTimer: number | null = null
 let scrollSaveTimer: number | null = null
@@ -169,54 +177,66 @@ async function openFileAction() {
 }
 
 let opening = false
-async function openFile(path: string, opts?: { line?: number }): Promise<boolean> {
-  if (opening) return false
-  opening = true
-  try {
-    let content: string
-    try {
-      content = await window.mdr.readFile(path)
-    } catch {
-      // file no longer exists — drop it from recent list
-      const s = getState()
-      s.recent = s.recent.filter((x) => x !== path)
-      saveState()
-      renderRecent()
-      return false
-    }
-    runtime.currentFile = path
-    session.lastFile = path
-    session.recentFiles = [path, ...(Array.isArray(session.recentFiles) ? (session.recentFiles as string[]) : []).filter((x) => x !== path)].slice(0, 10)
-    persistSession()
-    void window.mdr.setWindowFile(path)
-    tree.markSelected(path)
-    editor.openFile(path, content)
-    const name = path.split('/').pop() ?? path
-    fileTitle.textContent = name
-    document.title = `${name} — 墨页 · Inkleaf`
-    await renderPreview(previewScroll, preview, content, path)
-    buildOutline(preview, outlineNav)
-    updateActiveHeading(preview, outlineNav)
-    const saved = getState().scrollByPath[path]
-    if (opts?.line) {
-      jumpToLine(opts.line)
-    } else if (saved) {
-      previewScroll.scrollTop = saved
-    }
-    const s = getState()
-    s.recent = [path, ...s.recent.filter((x) => x !== path)].slice(0, 10)
-    saveState()
-    if (s.sidebarTab === 'recent') renderRecent()
-    updateBreadcrumb()
-    void refreshBacklinks(runtime.currentFile)
-    applyLayout()
-    return true
-  } finally {
-    opening = false
-  }
+
+/** tabbar 渲染：文件名 + 脏点 + 关闭按钮 */
+function renderTabs() {
+  const bar = document.getElementById('tabbar')
+  if (!bar) return
+  bar.innerHTML = ''
+  const paths = tabs.paths()
+  paths.forEach((p, i) => {
+    const tab = document.createElement('div')
+    tab.className = 'doc-tab' + (i === tabs.activeIndex ? ' active' : '') + (i === tabs.activeIndex && editor.isDirty() ? ' dirty' : '')
+    tab.setAttribute('role', 'tab')
+    tab.setAttribute('aria-selected', String(i === tabs.activeIndex))
+    const name = document.createElement('span')
+    name.className = 'tab-name'
+    name.textContent = p.split('/').pop() ?? p
+    tab.title = p
+    const close = document.createElement('span')
+    close.className = 'tab-close'
+    close.textContent = '×'
+    close.title = '关闭标签页'
+    close.addEventListener('click', (e) => {
+      e.stopPropagation()
+      void closeTabUi(i)
+    })
+    tab.addEventListener('click', () => void switchToTab(i))
+    tab.addEventListener('auxclick', (e) => {
+      if (e.button === 1) void closeTabUi(i)
+    })
+    tab.appendChild(name)
+    tab.appendChild(close)
+    bar.appendChild(tab)
+  })
 }
 
-function closeFile() {
+async function switchToTab(i: number): Promise<void> {
+  const target = tabs.get(i)
+  if (!target || i === tabs.activeIndex) return
+  await openFile(target.path)
+}
+
+async function closeTabUi(i: number): Promise<void> {
+  const closing = tabs.get(i)
+  if (!closing) return
+  if (i === tabs.activeIndex) {
+    if (editor.isDirty()) await editor.saveNow()
+    tabs.capture(editor.exportState(), previewScroll.scrollTop, false)
+  }
+  const next = tabs.close(i)
+  if (!next) {
+    closeFileUi()
+    return
+  }
+  await openFile(next.path)
+}
+
+/** 清空文档区 UI（所有标签已关或书库关闭时） */
+function closeFileUi() {
+  if (tabs.count) {
+    tabs.restorePaths([], -1)
+  }
   runtime.currentFile = null
   session.lastFile = null
   persistSession()
@@ -232,6 +252,89 @@ function closeFile() {
   updateBreadcrumb()
   void refreshBacklinks(null)
   applyLayout()
+}
+
+async function openFile(path: string, opts?: { line?: number; newTab?: boolean }): Promise<boolean> {
+  if (opening) return false
+  // 已是当前文件：仅跳转
+  if (tabs.activePath === path && !opts?.newTab) {
+    if (opts?.line) jumpToLine(opts.line)
+    return true
+  }
+  opening = true
+  try {
+    // 切换前：保存并捕获当前 tab 状态
+    if (tabs.activePath) {
+      if (editor.isDirty()) await editor.saveNow()
+      tabs.capture(editor.exportState(), previewScroll.scrollTop, false)
+    }
+    const sess = tabs.activate(path, { newTab: opts?.newTab })
+    let restored = false
+    if (sess.editorJSON) {
+      // 内存态恢复（含撤销历史与滚动位置）
+      editor.setPath(path)
+      editor.loadState(sess.editorJSON)
+      editor.setDirty(sess.dirty)
+      restored = true
+    }
+    let content: string | null = restored ? editor.getContent() : null
+    if (!restored) {
+      try {
+        content = await window.mdr.readFile(path)
+      } catch {
+        // file no longer exists — drop it from recent list and the tab
+        const s = getState()
+        s.recent = s.recent.filter((x) => x !== path)
+        saveState()
+        renderRecent()
+        const idx = tabs.indexOf(path)
+        if (idx >= 0) tabs.close(idx)
+        return false
+      }
+    }
+    runtime.currentFile = path
+    session.lastFile = path
+    session.recentFiles = [path, ...(Array.isArray(session.recentFiles) ? (session.recentFiles as string[]) : []).filter((x) => x !== path)].slice(0, 10)
+    persistSession()
+    void window.mdr.setWindowFile(path)
+    tree.markSelected(path)
+    if (!restored) editor.openFile(path, content!)
+    const name = path.split('/').pop() ?? path
+    fileTitle.textContent = name
+    document.title = `${name} — 墨页 · Inkleaf`
+    await renderPreview(previewScroll, preview, editor.getContent(), path)
+    buildOutline(preview, outlineNav)
+    updateActiveHeading(preview, outlineNav)
+    const saved = restored ? sess.scrollY : getState().scrollByPath[path]
+    if (opts?.line) {
+      jumpToLine(opts.line)
+    } else if (saved) {
+      previewScroll.scrollTop = saved
+    }
+    const s = getState()
+    s.recent = [path, ...s.recent.filter((x) => x !== path)].slice(0, 10)
+    saveState()
+    if (s.sidebarTab === 'recent') renderRecent()
+    updateBreadcrumb()
+    void refreshBacklinks(runtime.currentFile)
+    applyLayout()
+    renderTabs()
+    return true
+  } finally {
+    opening = false
+  }
+}
+
+/** 外部删除/关闭书库：从 tab 集中管理角度清理当前文档 */
+function closeFile() {
+  const cur = runtime.currentFile
+  const idx = cur ? tabs.indexOf(cur) : -1
+  const next = idx >= 0 ? tabs.close(idx) : null
+  if (next) {
+    void openFile(next.path)
+    return
+  }
+  closeFileUi()
 }
 
 async function newFileAction(dirOverride?: string) {
@@ -510,6 +613,8 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'new-file', title: '新建文件', run: () => void newFileAction() })
   registerCommand({ id: 'save', title: '保存', run: () => void editor.saveNow() })
   registerCommand({ id: 'close-library', title: '关闭书库', run: () => void closeLibrary() })
+  registerCommand({ id: 'new-tab', title: '新标签页打开文件…', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'close-tab', title: '关闭标签页', run: () => void closeTabUi(tabs.activeIndex), when: () => tabs.count > 0 })
   registerCommand({ id: 'quick-switch', title: '快速切换文件', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'search', title: '在书库中搜索', run: () => openPaletteFor('search'), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'export-pdf', title: '导出为 PDF…', run: () => void exportCurrent('pdf'), when: () => !!runtime.currentFile })
@@ -571,6 +676,7 @@ function setupActions() {
 
 function setupEditorCallbacks() {
   editor.onDirtyChange = (d) => {
+    renderTabs()
     saveStateEl.textContent = d ? '● 未保存' : '已保存'
     saveStateEl.classList.toggle('dirty', d)
     const name = runtime.currentFile?.split('/').pop() ?? ''
@@ -747,7 +853,7 @@ async function boot() {
     return !c.editor && !c.preview
   })
 
-  tree.onOpenFile = (p) => void openFile(p)
+  tree.onOpenFile = (p, newTab) => void openFile(p, { newTab })
   tree.onCreated = (p) => void openFile(p)
   tree.onRenamed = ({ oldPath, newPath, isDir }) => {
     const remap = (p: string | null): string | null => {
@@ -815,9 +921,17 @@ async function boot() {
   if (typeof savedRoot === 'string' && savedRoot) {
     await openLibrary(savedRoot)
   }
-  const lastFile = session.lastFile
-  if (typeof lastFile === 'string' && lastFile) {
-    await openFile(lastFile)
+  // 恢复上次会话的标签页集合（懒加载：仅激活页读内容）
+  const savedTabs = Array.isArray(session.tabs) ? (session.tabs as string[]).filter((t) => typeof t === 'string') : []
+  if (savedTabs.length) {
+    tabs.restorePaths(savedTabs, typeof session.activeIndex === 'number' ? session.activeIndex : savedTabs.length - 1)
+    const activePath = tabs.activePath
+    if (activePath) await openFile(activePath)
+  } else {
+    const lastFile = session.lastFile
+    if (typeof lastFile === 'string' && lastFile) {
+      await openFile(lastFile)
+    }
   }
   window.mdr.rendererReady()
 }

@@ -31,7 +31,7 @@ export class FileTree {
   private filterQuery = ''
   private editing: Editing = null
 
-  onOpenFile: ((path: string) => void) | null = null
+  onOpenFile: ((path: string, newTab?: boolean) => void) | null = null
   onCreated: ((path: string) => void) | null = null
   onRenamed: ((info: { oldPath: string; newPath: string; isDir: boolean }) => void) | null = null
   onDeleted: ((path: string) => void) | null = null
@@ -205,9 +205,10 @@ export class FileTree {
           row.innerHTML =
             '<span class="disclosure"></span>' +
             `<span class="tree-name file">${this.hlName(n.name)}</span>`
-          row.addEventListener('click', () => {
+          row.addEventListener('click', (e) => {
             this.selected = n.path
-            this.onOpenFile?.(n.path)
+            // ⌘/Ctrl 点击在新标签页打开
+            this.onOpenFile?.(n.path, e.metaKey || e.ctrlKey)
             this.render()
           })
         }
