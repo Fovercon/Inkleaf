@@ -337,6 +337,9 @@ export function registerIpc() {
   ipcMain.handle(CH.indexTags, (): TagCount[] => indexService.queryTags())
   ipcMain.handle(CH.indexBacklinks, (_e, name: string): Backlink[] => indexService.queryBacklinks(name))
   ipcMain.handle(CH.indexResolve, (_e, name: string): string | null => indexService.resolveName(name))
+  ipcMain.handle(CH.indexPeek, (_e, p: string): Promise<{ title: string; excerpt: string } | null> =>
+    indexService.peekDoc(p))
+  ipcMain.handle(CH.indexFilesByTag, (_e, tag: string): string[] => indexService.queryFilesByTag(tag))
 
   ipcMain.handle(CH.sessionGet, () => readSession())
   ipcMain.handle(CH.sessionSet, (_e, s: Record<string, unknown>) => writeSession(s))

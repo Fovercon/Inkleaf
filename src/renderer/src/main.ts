@@ -16,6 +16,7 @@ import { setupUpdater } from './updater'
 import { setupPlatformUi } from './platform'
 import { registerCommand, runCommand } from './commands'
 import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
+import { setWikilinkNav } from './wikilink'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
@@ -340,6 +341,16 @@ function setupBackToTop() {
 
 // ---------------- wiring ----------------
 
+/** wikilink 锚点 → 源码行号（匹配标题文本） */
+function findHeadingLine(path: string, anchor: string): number | undefined {
+  const content = editor.getContent()
+  if (!content || editor.currentPath !== path) return undefined
+  const re = new RegExp('^#{1,6}\\s+' + anchor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$', 'm')
+  const m = re.exec(content)
+  if (!m) return undefined
+  return content.slice(0, m.index).split('\n').length
+}
+
 function jumpToLine(line: number) {
   const els = Array.from(preview.querySelectorAll<HTMLElement>('[data-source-line]'))
   const el = els.find((e) => Number(e.dataset.sourceLine) >= line)
@@ -620,6 +631,9 @@ async function boot() {
   setupFsWatch()
   setupDragDrop()
   handleLinkClick(previewScroll, preview, (p) => void openFile(p))
+  setWikilinkNav((p, anchor) => {
+    void openFile(p, anchor ? { line: findHeadingLine(p, anchor) } : undefined)
+  })
   setupLightbox(preview)
 
   $('#tab-files').addEventListener('click', () => setSidebarTab('files'))

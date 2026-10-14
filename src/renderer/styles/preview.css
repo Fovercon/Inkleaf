@@ -212,3 +212,44 @@
 .md-preview .hljs-attr, .md-preview .hljs-variable, .md-preview .hljs-template-variable,
 .md-preview .hljs-type, .md-preview .hljs-selector-class { color: var(--hl-attr); }
 .md-preview .hljs-built_in, .md-preview .hljs-selector-id { color: var(--hl-title); }
+
+/* ---------- wikilinks ---------- */
+.md-preview a.internal-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  cursor: pointer;
+}
+.md-preview a.internal-link:hover { border-bottom-style: solid; }
+.md-preview a.internal-link.broken {
+  color: var(--text-dim);
+  border-bottom: 1px dotted var(--border-strong);
+}
+
+.wikilink-card {
+  position: fixed;
+  z-index: 140;
+  width: 320px;
+  max-width: 86vw;
+  background: var(--bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.16);
+  padding: 12px 14px;
+  pointer-events: none;
+}
+.wikilink-card .wl-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+.wikilink-card .wl-excerpt {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

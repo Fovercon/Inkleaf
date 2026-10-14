@@ -186,3 +186,41 @@ export async function loadPersistedIndex(root: string): Promise<boolean> {
     return false
   }
 }
+
+/** 标签 → 文档路径列表 */
+export function queryFilesByTag(tag: string): string[] {
+  const out: string[] = []
+  for (const e of entries.values()) {
+    if (e.tags.includes(tag)) out.push(e.path)
+  }
+  return out.sort()
+}
+
+/** 悬停预览：标题 + 摘要（粗剥 Markdown 语法的正文前若干行） */
+export async function peekDoc(p: string, maxChars = 240): Promise<{ title: string; excerpt: string } | null> {
+  let raw: string
+  try {
+    raw = await fs.readFile(p, 'utf8')
+  } catch {
+    return null
+  }
+  let content = raw
+  try {
+    content = matter(raw).content
+  } catch {
+    /* keep raw */
+  }
+  const lines = content.split('\n').filter((l) => l.trim() && !/^#{1,6}\s/.test(l.trim()))
+  const excerpt = lines
+    .join(' ')
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[\[[^\]]*\]\]/g, (m) => m.replace(/[\[\]|]/g, ' ').trim())
+    .replace(/[*_`>#|-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxChars)
+  const h1 = /^#\s+(.+)$/m.exec(content)?.[1]?.trim()
+  return { title: h1 || baseName(p), excerpt }
+}

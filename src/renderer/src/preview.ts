@@ -146,7 +146,13 @@ const md: MarkdownIt = new MarkdownIt({
     return ''
   },
 })
-applyMarkdownPlugins(md)
+// 装配延迟到首次渲染：保证晚于 wikilink 等功能模块的插件注册（import 顺序解耦）
+let pipelineApplied = false
+function ensurePipeline() {
+  if (pipelineApplied) return
+  pipelineApplied = true
+  applyMarkdownPlugins(md)
+}
 
 // ---------------- Mermaid：代码块处理器（懒加载 + 缓存） ----------------
 
@@ -230,6 +236,7 @@ let last: LastRender | null = null
 let renderSeq = 0
 
 export async function renderPreview(scroller: HTMLElement, container: HTMLElement, text: string, filePath: string | null) {
+  ensurePipeline()
   const seq = ++renderSeq
   const big = text.length > 20000
   const t0 = big ? performance.now() : 0

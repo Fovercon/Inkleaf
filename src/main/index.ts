@@ -569,6 +569,40 @@ async function createWindow() {
         const ic = JSON.parse(indexCheck)
         const icOk = ic.hasTravel && ic.hasYunnan && ic.hasBudget && ic.backlinks >= 1 && ic.resolveOk
         console.log(`[index-check] travel=${ic.hasTravel} yunnan=${ic.hasYunnan} budget=${ic.hasBudget} backlinks=${ic.backlinks}(${ic.backlinkFrom}) resolve=${ic.resolveOk} ${icOk ? 'OK' : 'FAIL'}`)
+        // wikilink check: render / click-to-open / hover preview card
+        const wikilinkCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              const links = document.querySelectorAll('#preview a[data-wikilink]');
+              const first = links[0];
+              const rendered = links.length >= 3 && !!first && first.textContent.trim() === '旅行计划';
+              let opened = false;
+              if (first) {
+                first.click();
+                await new Promise(r => setTimeout(r, 1200));
+                opened = (document.getElementById('file-title')?.textContent ?? '') === '旅行计划.md';
+              }
+              // hover preview card on the current doc's wikilink (旅行计划 has none — go back to README first)
+              let hovered = false;
+              if (opened) {
+                document.querySelector('.tree-row[data-path$="README.md"]')?.click();
+                await new Promise(r => setTimeout(r, 1200));
+                const target = document.querySelector('#preview a[data-wikilink]');
+                if (target) {
+                  target.dispatchEvent(new MouseEvent('mouseenter', {bubbles: false}));
+                  await new Promise(r => setTimeout(r, 900));
+                  hovered = !!document.querySelector('.wikilink-card');
+                  document.querySelector('.wikilink-card')?.remove();
+                }
+              }
+              return JSON.stringify({count: links.length, rendered, opened, hovered});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        const wl = JSON.parse(wikilinkCheck)
+        console.log(`[wikilink-check] count=${wl.count} rendered=${wl.rendered} opened=${wl.opened} hoverCard=${wl.hovered} ${wl.rendered && wl.opened && wl.hovered ? 'OK' : 'FAIL'}`)
         // regex search check: '/'-prefixed query in the search palette uses RegExp matching
         const regexCheck = await win.webContents.executeJavaScript(`
           (async () => {
