@@ -790,6 +790,48 @@ async function createWindow() {
         const pcOk = pc2.runtimeReady && pc2.hello && pc2.activated && pc2.ran && pc2.isolated && pc2.bridgeProbe && pc2.disableWorks && pc2.reenableWorks
         console.log(`[plugin-check] runtime=${pc2.runtimeReady} listed=${pc2.listed} hello=${pc2.hello} activated=${pc2.activated} ran=${pc2.ran} isolated=${pc2.isolated} zeroPermissionProbe=${pc2.bridgeProbe} calloutOff=${pc2.disableWorks} calloutOn=${pc2.reenableWorks} ${pcOk ? 'OK' : 'FAIL'}`)
         assertUiCheck('plugin', pcOk, pc2)
+        // plugins-ui check: the plugin center dialog lists plugins, toggles them live, runs contributed commands
+        const pluginsUiCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              const btn = document.getElementById('btn-plugins');
+              if (!btn) return JSON.stringify({noButton: true});
+              btn.click();
+              await new Promise(r => setTimeout(r, 500));
+              const overlay = document.getElementById('pc-overlay');
+              const visible = !!overlay && overlay.classList.contains('visible');
+              const findCard = (id) => [...document.querySelectorAll('.pc-card')].find(c => c.dataset.id === id);
+              const cards = [...document.querySelectorAll('.pc-card')];
+              const callout = findCard('bundled.callout');
+              const hello = findCard('hello-inkleaf');
+              const stateOf = (c) => c?.querySelector('.pc-state')?.textContent ?? '';
+              let toggled = false, reenabled = false, calloutGone = false, calloutBack = false;
+              if (callout) {
+                callout.querySelector('[data-action="toggle"]')?.click();
+                await new Promise(r => setTimeout(r, 300));
+                toggled = stateOf(findCard('bundled.callout')).includes('已停用');
+                document.dispatchEvent(new CustomEvent('mdr-test-rerender'));
+                await new Promise(r => setTimeout(r, 900));
+                calloutGone = document.querySelectorAll('#preview blockquote.md-callout').length === 0;
+                findCard('bundled.callout')?.querySelector('[data-action="toggle"]')?.click();
+                await new Promise(r => setTimeout(r, 500));
+                reenabled = stateOf(findCard('bundled.callout')).includes('运行中');
+                document.dispatchEvent(new CustomEvent('mdr-test-rerender'));
+                await new Promise(r => setTimeout(r, 900));
+                calloutBack = document.querySelectorAll('#preview blockquote.md-callout').length >= 1;
+              }
+              const hasCommand = !!hello?.querySelector('.pc-cmd');
+              overlay?.querySelector('.pc-close')?.click();
+              await new Promise(r => setTimeout(r, 250));
+              const closed = !overlay?.classList.contains('visible');
+              return JSON.stringify({visible, listed: cards.length, toggled, reenabled, calloutGone, calloutBack, hasCommand, closed});
+            } catch (err) { return JSON.stringify({error: String(err)}); }
+          })()
+        `)
+        const pu = JSON.parse(pluginsUiCheck)
+        const puOk = pu.visible && pu.listed >= 2 && pu.toggled && pu.reenabled && pu.calloutGone && pu.calloutBack && pu.hasCommand && pu.closed
+        console.log(`[plugins-ui-check] dialog=${pu.visible} listed=${pu.listed} toggle=${pu.toggled}/${pu.reenabled} callout=${pu.calloutGone}/${pu.calloutBack} command=${pu.hasCommand} closed=${pu.closed} ${puOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('plugins-ui', puOk, pu)
         // stability checks: tab dirty-state preservation / session tabs persisted / clipboard image paste
         const tripPath = path.join(testLibrary, '笔记', '旅行计划.md')
         const tripOriginal = fs.readFileSync(tripPath, 'utf8')
@@ -1051,6 +1093,7 @@ function buildMenu() {
         { label: '新标签页打开文件…', accelerator: 'CmdOrCtrl+T', click: () => send('new-tab') },
         { label: '回到首页', accelerator: 'CmdOrCtrl+Shift+H', click: () => send('go-home') },
         { label: '在书库中搜索…', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('search') },
+        { label: '插件中心…', click: () => send('plugins') },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { type: 'separator' },

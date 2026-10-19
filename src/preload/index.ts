@@ -34,6 +34,9 @@ const api = {
   indexFilesByTag: (tag: string): Promise<string[]> => ipcRenderer.invoke(CH.indexFilesByTag, tag),
   indexListNames: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke(CH.indexListNames),
   pluginsList: (): Promise<{ id: string; name: string; version: string; mainUrl: string; manifest: Record<string, unknown> }[]> => ipcRenderer.invoke(CH.pluginsList),
+  pluginsReveal: (): Promise<void> => ipcRenderer.invoke(CH.pluginsReveal),
+  pluginsInstall: (): Promise<{ ok: boolean; error?: string; id?: string }> => ipcRenderer.invoke(CH.pluginsInstall),
+  pluginsUninstall: (id: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke(CH.pluginsUninstall, id),
   readFile: (p: string): Promise<string> => ipcRenderer.invoke(CH.fsRead, p),
   resolveImage: (source: string, documentPath: string): Promise<ImageResolution> =>
     ipcRenderer.invoke(CH.imageResolve, source, documentPath),

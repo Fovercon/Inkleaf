@@ -14,7 +14,7 @@ async function fixture() {
   ;(globalThis as any).__pluginUserData = directory
   const bundle = await build({ entryPoints: ['src/main/plugins-host.ts'], bundle: true, write: false, platform: 'node', format: 'cjs', logLevel: 'silent', plugins: [{ name: 'mock-electron', setup(build) {
     build.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron', namespace: 'fixture' }))
-    build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `export const app={getPath:()=>globalThis.__pluginUserData};export const ipcMain={handle(){}}` }))
+    build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `export const app={getPath:()=>globalThis.__pluginUserData};export const ipcMain={handle(){}};export const dialog={};export const shell={}` }))
   } }] })
   const module = { exports: {} as any }
   new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(path.join(repository, 'package.json')))
