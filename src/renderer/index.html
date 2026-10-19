@@ -24,6 +24,8 @@
     <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 12 6-6 6 6M12 6v13"/></symbol>
     <symbol id="i-update" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6M12 8v8m-3-3 3 3 3-3"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6h-6v6H4z"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-folder-open" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h8v3"/><path d="M3 10h18l-2 9H5z"/></symbol>
   </defs>
 </svg>
 <header id="titlebar">
@@ -52,8 +54,7 @@
 <div id="workspace">
   <button id="sidebar-expand" title="展开书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="展开书库栏"><svg class="icon"><use href="#i-right"/></svg></button>
   <aside id="sidebar" aria-label="书库">
-    <div class="sidebar-eyebrow">YOUR LIBRARY</div>
-    <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span></div>
+    <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span><span id="library-count" hidden></span></div>
     <div class="sidebar-tabs" role="group" aria-label="书库视图">
       <button id="tab-files" class="stab active">全部文件</button>
       <button id="tab-recent" class="stab">最近打开</button>
@@ -63,7 +64,6 @@
     <div id="file-tree"></div>
     <div id="recent-list"></div>
     <div id="tag-list"></div>
-    <div class="sidebar-note"><span class="leaf-dot"></span>一页一页，积累所思。</div>
     <button id="sidebar-collapse" title="收起书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="收起书库栏"><svg class="icon"><use href="#i-left"/></svg></button>
   </aside>
   <div class="resizer" id="resizer-sidebar"></div>
