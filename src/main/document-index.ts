@@ -14,7 +14,10 @@ export interface Backlink { path: string; line: number }
 const extension = /\.(md|markdown|mdx)$/i
 const basename = (p: string) => path.basename(p).replace(extension, '')
 const wikilink = /\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g
-const bodyTag = /(?:^|[\s(])#([\p{L}\p{N}][\p{L}\p{N}_/-]*)/gu
+// Inline tags must start with a letter and must not be markdown link targets,
+// so issue references (#1720) and heading anchors (#1-设计) stay out of the index.
+const bodyTag = /(?<!\])(?:^|[\s(])#(\p{L}[\p{L}\p{N}_/-]*)/gu
+const indexFormat = 3
 const hash = (text: string) => createHash('sha256').update(text).digest('hex')
 const within = (root: string, p: string) => path.resolve(p).startsWith(path.resolve(root) + path.sep)
 
@@ -130,7 +133,7 @@ export class DocumentIndex {
       const cached = JSON.parse(await fs.readFile(this.cacheFile, 'utf8')) as {
         version?: number; root?: string; entries?: DocIndexEntry[]
       }
-      if (generation !== this.generation || cached.version !== 2 || cached.root !== this.root || !Array.isArray(cached.entries)) return false
+      if (generation !== this.generation || cached.version !== indexFormat || cached.root !== this.root || !Array.isArray(cached.entries)) return false
       const loaded = new Map<string, DocIndexEntry>()
       for (const entry of cached.entries) {
         if (!entry || typeof entry.path !== 'string' || !this.files.has(entry.path) || loaded.has(entry.path)
@@ -158,7 +161,7 @@ export class DocumentIndex {
     const generation = this.generation
     this.writes = this.writes.then(async () => {
       if (generation !== this.generation || !this.root) return
-      const payload = JSON.stringify({ version: 2, root: this.root, entries: [...this.entries.values()] })
+      const payload = JSON.stringify({ version: indexFormat, root: this.root, entries: [...this.entries.values()] })
       await fs.mkdir(path.dirname(this.cacheFile), { recursive: true })
       await fs.writeFile(`${this.cacheFile}.tmp`, payload, { mode: 0o600 })
       await fs.rename(`${this.cacheFile}.tmp`, this.cacheFile)

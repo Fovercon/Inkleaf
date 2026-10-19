@@ -88,6 +88,41 @@ test('cache validation detects files added, deleted or renamed while closed', as
   assert.equal(reopened.names().some(n => n.path === a), false)
 })
 
+test('issue references and heading anchors are not tags, but real inline tags are', async t => {
+  const { root, index, write } = await fixture(t)
+  const a = await write('A.md', [
+    '---',
+    'tags: [2026-q4]',
+    '---',
+    '## 目录',
+    '1. [系统全景视图](#1-系统全景视图)',
+    '2. [API 设计](#api-设计)',
+    '',
+    'feat(extensions): support multiple active catalogs simultaneously (#1720)',
+    'Review PR #37 before merge, then see #1943.',
+    '',
+    '真标签: #入门 #pr-1720 (备查 #note)',
+  ].join('\n'))
+  await index.build(root, [a])
+  assert.deepEqual(index.tags().map(c => c.tag).sort(), ['2026-q4', 'note', 'pr-1720', '入门'])
+  assert.deepEqual(index.filesByTag('1720'), [], 'A bare issue number must never become a tag')
+  assert.deepEqual(index.filesByTag('1-系统全景视图'), [], 'A heading anchor must never become a tag')
+})
+
+test('a cache from the previous index format is rejected and rebuilt', async t => {
+  const { root, cache, index, write } = await fixture(t)
+  const a = await write('A.md', '# A\n#legacy\n')
+  await index.build(root, [a]); await index.flush()
+  const raw = JSON.parse(await fs.readFile(cache, 'utf8')) as { version: number }
+  raw.version = 2
+  await fs.writeFile(cache, JSON.stringify(raw))
+  const reopened = new DocumentIndex(cache)
+  t.after(() => reopened.clear())
+  assert.equal(await reopened.load(root, [a]), false, 'Old-format caches must force a full rescan')
+  await reopened.build(root, [a])
+  assert.deepEqual(reopened.tags(), [{ tag: 'legacy', count: 1 }])
+})
+
 async function pauseFirstRead(file: string) {
   const original = fs.readFile
   let release!: () => void, reached!: () => void
