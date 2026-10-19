@@ -25,6 +25,7 @@
     <symbol id="i-update" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6M12 8v8m-3-3 3 3 3-3"/></symbol>
     <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6h-6v6H4z"/></symbol>
     <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-plugins" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 13h7v7h-7z"/><path d="M13 5.5A1.5 1.5 0 0 1 14.5 4H19a1 1 0 0 1 1 1v4.5A1.5 1.5 0 0 1 18.5 11h-4A1.5 1.5 0 0 1 13 9.5zM4 14.5A1.5 1.5 0 0 1 5.5 13h4A1.5 1.5 0 0 1 11 14.5v4A1.5 1.5 0 0 1 9.5 20H5a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="i-folder-open" viewBox="0 0 24 24"><path d="M3 7V5h6l2 2h8v3"/><path d="M3 10h18l-2 9H5z"/></symbol>
   </defs>
 </svg>
@@ -47,6 +48,7 @@
     </div>
     <span class="tb-sep"></span>
     <button id="btn-theme" title="切换主题：跟随系统 / 暖白 / 羊皮纸 / 护眼绿 / 深色" aria-label="切换主题" class="tb"><svg class="icon"><use href="#i-theme"/></svg></button>
+    <button id="btn-plugins" title="插件中心" aria-label="插件中心" class="tb"><svg class="icon"><use href="#i-plugins"/></svg></button>
     <button id="btn-updates" title="检查更新" aria-label="检查软件更新" class="tb"><svg class="icon"><use href="#i-update"/></svg></button>
   </div>
 </header>
@@ -129,6 +131,17 @@
   <span id="editor-stats"></span>
   <span class="status-shortcut">快速切换 <kbd data-shortcut="CmdOrCtrl+P">⌘P</kbd></span>
 </footer>
+<div id="pc-overlay" role="dialog" aria-modal="true" aria-label="插件中心">
+  <div class="pc-dialog">
+    <div class="pc-top"><span class="pc-heading">插件中心</span><button class="pc-close" aria-label="关闭">✕</button></div>
+    <div id="pc-list"></div>
+    <div class="pc-footer">
+      <button id="pc-reveal" class="pc-btn">打开插件文件夹</button>
+      <button id="pc-install" class="pc-btn primary">从文件夹安装…</button>
+      <button id="pc-refresh" class="pc-btn">刷新</button>
+    </div>
+  </div>
+</div>
 <script type="module" src="./renderer.js"></script>
 </body>
 </html>

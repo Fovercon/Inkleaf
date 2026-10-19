@@ -23,6 +23,38 @@ interface PluginRecord {
 const records = new Map<string, PluginRecord>()
 const bundledActivators = new Map<string, (ink: InkApi) => Promise<void> | void>()
 
+export interface PluginSnapshot {
+  id: string
+  name: string
+  version: string
+  description: string
+  state: PluginRecord['state']
+  bundled: boolean
+  permissions: string[]
+  commands: { id: string; title: string }[]
+  message?: string
+}
+const stateListeners = new Set<() => void>()
+function notify() { for (const cb of stateListeners) { try { cb() } catch { /* listener detached */ } } }
+/** UI reads a plain copy; mutations still go through the lifecycle API. */
+export function pluginSnapshot(): PluginSnapshot[] {
+  return [...records.values()].map((rec) => ({
+    id: rec.id,
+    name: typeof rec.manifest.name === 'string' ? rec.manifest.name : rec.id,
+    version: typeof rec.manifest.version === 'string' ? rec.manifest.version : '',
+    description: typeof rec.manifest.description === 'string' ? rec.manifest.description : '',
+    state: rec.state,
+    bundled: rec.bundled,
+    permissions: Array.isArray(rec.manifest.permissions) ? rec.manifest.permissions.map(String) : [],
+    commands: ((rec.manifest.contributes as { commands?: Array<{ id: string; title: string }> } | undefined)?.commands ?? []).map((c) => ({ id: c.id, title: c.title })),
+    message: rec.message,
+  }))
+}
+export function onPluginStateChange(cb: () => void): () => void {
+  stateListeners.add(cb)
+  return () => stateListeners.delete(cb)
+}
+
 function live(rec: PluginRecord, epoch: number) {
   return rec.epoch === epoch && (rec.state === 'activating' || rec.state === 'active')
 }
@@ -45,6 +77,7 @@ function fail(rec: PluginRecord, err: unknown) {
   rec.state = 'error'
   rec.message = String(err)
   cleanup(rec)
+  notify()
   console.error(`[plugin] ${rec.id} 失败`, err)
 }
 function commandId(rec: PluginRecord, id: unknown): asserts id is string {
@@ -170,6 +203,7 @@ async function activatePlugin(id: string): Promise<boolean> {
       }
       if (!live(rec, epoch)) return false
       rec.state = 'active'
+      notify()
       return true
     } catch (err) {
       if (live(rec, epoch)) fail(rec, err)
@@ -187,6 +221,7 @@ function deactivatePlugin(id: string) {
   rec.state = 'disabled'
   rec.activation = undefined
   cleanup(rec)
+  notify()
 }
 export function registerBundledPlugin(id: string, manifest: Record<string, unknown>, activate: (ink: InkApi) => Promise<void> | void) {
   record(id, manifest, true)
@@ -217,6 +252,7 @@ export async function discoverExternalPlugins() {
     }
     record(p.id, p.manifest ?? {}, false, p.mainUrl)
   }
+  notify()
 }
 function injectDeclarations(rec: PluginRecord) {
   if (rec.state !== 'registered') return
