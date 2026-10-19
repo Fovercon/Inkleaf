@@ -136,6 +136,33 @@ function applyLayout() {
   $('#library-empty-description').textContent = tree.hasDocuments
     ? '从左侧选择一篇文档，或新建一页，记录此刻的想法。'
     : '这里还没有 Markdown 文档。新建一页，让文字开始生长。'
+  if (!runtime.currentFile && runtime.libraryRoot) renderHome()
+}
+
+/** 首页的最近打开列表：点击打开，⌘/Ctrl 点击新标签打开 */
+function renderHome() {
+  const block = $('#home-recent-block')
+  const host = $('#home-recent')
+  if (!block || !host) return
+  host.innerHTML = ''
+  const root = runtime.libraryRoot
+  const rec = getState().recent.slice(0, 6)
+  block.hidden = rec.length === 0
+  for (const p of rec) {
+    const item = document.createElement('button')
+    item.className = 'home-recent-item'
+    const name = p.split('/').pop() ?? p
+    const dir =
+      root && p.startsWith(root + '/')
+        ? p.slice(root.length + 1, p.lastIndexOf('/')) || '（书库根目录）'
+        : p.slice(0, p.lastIndexOf('/'))
+    item.innerHTML = `<span class="hri-name"></span><span class="hri-dir"></span>`
+    ;(item.querySelector('.hri-name') as HTMLElement).textContent = name
+    ;(item.querySelector('.hri-dir') as HTMLElement).textContent = dir
+    item.title = p
+    item.addEventListener('click', (e) => void openFile(p, e.metaKey || e.ctrlKey ? { newTab: true } : undefined))
+    host.appendChild(item)
+  }
 }
 
 function togglePane(key: PaneKey) {
@@ -364,6 +391,19 @@ async function closeTabUi(i: number): Promise<void> {
       if (!next) closeFileUi()
       else await openFileNow(next.path)
     } catch (error) { showDocumentError('保存失败，标签页仍保持打开', error) }
+    finally { if (locksEditor) editor.setMutationLocked(false) }
+  })
+}
+
+/** 回到首页：保存所有未落盘标签，清空标签区，呈现首页 */
+async function goHomeUi(): Promise<void> {
+  await serializeNavigation(async () => {
+    const locksEditor = !!editor.currentPath
+    if (locksEditor) editor.setMutationLocked(true)
+    try {
+      await saveAllDocuments()
+      closeFileUi()
+    } catch (error) { showDocumentError('保存失败，仍停留在当前文档', error) }
     finally { if (locksEditor) editor.setMutationLocked(false) }
   })
 }
@@ -793,6 +833,7 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'close-library', title: '关闭书库', run: () => void closeLibrary() })
   registerCommand({ id: 'new-tab', title: '新标签页打开文件…', run: () => openPaletteFor('files', true), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'close-tab', title: '关闭标签页', run: () => void closeTabUi(tabs.activeIndex), when: () => tabs.count > 0 })
+  registerCommand({ id: 'go-home', title: '回到首页', run: () => void goHomeUi(), when: () => tabs.count > 0 || !!runtime.currentFile })
   registerCommand({ id: 'quick-switch', title: '快速切换文件', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'search', title: '在书库中搜索', run: () => openPaletteFor('search'), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'export-pdf', title: '导出为 PDF…', run: () => void exportCurrent('pdf'), when: () => !!runtime.currentFile })
@@ -828,6 +869,7 @@ function setupActions() {
   // 工具栏与空状态按钮统一走命令分发
   $('#btn-open-folder').addEventListener('click', () => runCommand('open-folder'))
   $('#btn-open-file').addEventListener('click', () => runCommand('open-file'))
+  $('#btn-home').addEventListener('click', () => runCommand('go-home'))
   $('#btn-new-file').addEventListener('click', () => runCommand('new-file'))
   $('#empty-open-folder').addEventListener('click', () => runCommand('open-folder'))
   $('#empty-open-file').addEventListener('click', () => runCommand('open-file'))
