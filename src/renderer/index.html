@@ -23,6 +23,7 @@
     <symbol id="i-right" viewBox="0 0 24 24"><path d="m10 7 5 5-5 5"/></symbol>
     <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 12 6-6 6 6M12 6v13"/></symbol>
     <symbol id="i-update" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2 8M20 4v6h-6M12 8v8m-3-3 3 3 3-3"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v9h-5v-6h-6v6H4z"/></symbol>
   </defs>
 </svg>
 <header id="titlebar">
@@ -30,6 +31,7 @@
   <div id="file-title"></div>
   <div id="toolbar" role="toolbar" aria-label="文件与视图工具">
     <div class="toolbar-group">
+      <button id="btn-home" title="回到首页 (⇧⌘H)" data-shortcut="CmdOrCtrl+Shift+H" aria-label="回到首页" class="tb"><svg class="icon"><use href="#i-home"/></svg></button>
       <button id="btn-open-folder" title="打开文件夹 (⇧⌘O)" data-shortcut="CmdOrCtrl+Shift+O" aria-label="打开文件夹" class="tb"><svg class="icon"><use href="#i-folder"/></svg></button>
       <button id="btn-open-file" title="打开文件 (⌘O)" data-shortcut="CmdOrCtrl+O" aria-label="打开文件" class="tb"><svg class="icon"><use href="#i-file"/></svg></button>
       <button id="btn-new-file" title="新建文件 (⌘N)" data-shortcut="CmdOrCtrl+N" aria-label="新建文件" class="tb"><svg class="icon"><use href="#i-plus"/></svg></button>
@@ -68,12 +70,16 @@
   <div id="doc-wrap">
     <section id="library-empty" aria-label="选择文档">
       <div class="library-empty-card">
-        <svg class="library-empty-icon" aria-hidden="true"><use href="#i-book"/></svg>
+        <div class="home-brand"><svg class="empty-icon" aria-hidden="true"><use href="#i-brand"/></svg></div>
         <h2 id="library-empty-title">选择一篇文档，开始阅读</h2>
         <p id="library-empty-description">从左侧选择一篇文档，或新建一页，记录此刻的想法。</p>
         <div class="empty-actions">
           <button id="library-new-file" class="primary"><svg class="icon"><use href="#i-plus"/></svg>新建一页</button>
           <button id="library-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件</button>
+        </div>
+        <div class="home-recent-block" id="home-recent-block" hidden>
+          <div class="home-recent-label">最近打开</div>
+          <div id="home-recent"></div>
         </div>
       </div>
     </section>

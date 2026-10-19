@@ -870,6 +870,33 @@ async function createWindow() {
         const rxc = JSON.parse(regexCheck)
         console.log(`[regex-check] lines=${rxc.lines} direct=${rxc.direct} ${rxc.lines >= 4 && rxc.direct >= 4 ? 'OK' : 'FAIL'}`)
         assertUiCheck('regex', rxc.lines >= 4 && rxc.direct >= 4, rxc)
+        // home check: 回到首页 closes every tab, shows the home page with recent documents, and a recent click reopens
+        const homeCheck = await win.webContents.executeJavaScript(`
+          (async () => {
+            try {
+              const hasButton = !!document.getElementById('btn-home');
+              const beforeTabs = document.querySelectorAll('.doc-tab').length;
+              document.dispatchEvent(new CustomEvent('mdr-test-command', {detail: {id: 'go-home'}}));
+              await new Promise(r => setTimeout(r, 1800));
+              const homeVisible = document.getElementById('library-empty')?.classList.contains('visible') === true;
+              const afterTabs = document.querySelectorAll('.doc-tab').length;
+              const recentItems = document.querySelectorAll('#home-recent .home-recent-item').length;
+              const first = document.querySelector('#home-recent .home-recent-item');
+              first?.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+              await new Promise(r => setTimeout(r, 1800));
+              const reopened = (document.getElementById('file-title')?.textContent ?? '') !== ''
+                && document.getElementById('library-empty')?.classList.contains('visible') === false
+                && document.querySelectorAll('.doc-tab').length === 1;
+              return JSON.stringify({hasButton, beforeTabs, homeVisible, afterTabs, recentItems, reopened});
+            } catch (err) {
+              return JSON.stringify({error: String(err)});
+            }
+          })()
+        `)
+        const hc = JSON.parse(homeCheck)
+        const homeOk = hc.hasButton && hc.beforeTabs >= 1 && hc.homeVisible && hc.afterTabs === 0 && hc.recentItems >= 1 && hc.reopened
+        console.log(`[home-check] button=${hc.hasButton} tabs ${hc.beforeTabs}->${hc.afterTabs} home=${hc.homeVisible} recent=${hc.recentItems} reopened=${hc.reopened} ${homeOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('home', homeOk, hc)
         const focusShot = await win.webContents.capturePage()
         fs.writeFileSync(path.join(dir, `round${round}-focus.png`), focusShot.toPNG())
         await win.webContents.executeJavaScript(`
@@ -1010,12 +1037,13 @@ function buildMenu() {
         { type: 'separator' },
         { label: '快速切换文件…', accelerator: 'CmdOrCtrl+P', click: () => send('quick-switch') },
         { label: '新标签页打开文件…', accelerator: 'CmdOrCtrl+T', click: () => send('new-tab') },
+        { label: '回到首页', accelerator: 'CmdOrCtrl+Shift+H', click: () => send('go-home') },
         { label: '在书库中搜索…', accelerator: 'CmdOrCtrl+Shift+F', click: () => send('search') },
         { type: 'separator' },
         { label: '保存', accelerator: 'CmdOrCtrl+S', click: () => send('save') },
         { type: 'separator' },
         { label: '导出为 PDF…', accelerator: 'CmdOrCtrl+Shift+P', click: () => send('export-pdf') },
-        { label: '导出为 HTML…', accelerator: 'CmdOrCtrl+Shift+H', click: () => send('export-html') },
+        { label: '导出为 HTML…', accelerator: 'CmdOrCtrl+Shift+E', click: () => send('export-html') },
         { type: 'separator' },
         { label: '关闭标签页', accelerator: 'CmdOrCtrl+Shift+W', click: () => send('close-tab') },
         { label: '关闭书库', click: () => send('close-library') },
