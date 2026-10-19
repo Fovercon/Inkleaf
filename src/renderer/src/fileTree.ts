@@ -32,6 +32,7 @@ export class FileTree {
   onDeleted: ((path: string) => void | Promise<void>) | null = null
   /** The document coordinator saves and pauses editing for the whole filesystem transaction. */
   onMutate: ((operation: () => Promise<void>) => Promise<void>) | null = null
+  onCountChange: ((count: number) => void) | null = null
 
   private async mutate(operation: () => Promise<void>) {
     try {
@@ -69,6 +70,7 @@ export class FileTree {
     this.nodes = nodes
     const count = (items: TreeNode[]): number => items.reduce((total, node) => total + (node.type === 'file' ? 1 : count(node.children ?? [])), 0)
     this.documentCount = count(nodes)
+    this.onCountChange?.(this.documentCount)
     if (reset) {
       this.selected = null
       this.lastClickedDir = null
@@ -131,7 +133,15 @@ export class FileTree {
   private render() {
     const expanded = new Set(getState().expandedDirs)
     this.host.innerHTML = ''
-    this.host.appendChild(this.buildList(this.filteredNodes(), expanded))
+    const filtered = this.filteredNodes()
+    if (this.filterQuery && !filtered.length) {
+      const empty = document.createElement('div')
+      empty.className = 'tree-empty search-miss'
+      empty.textContent = `没有匹配「${this.filterQuery}」的文件`
+      this.host.appendChild(empty)
+      return
+    }
+    this.host.appendChild(this.buildList(filtered, expanded))
   }
 
   private filteredNodes(): TreeNode[] {
@@ -198,8 +208,10 @@ export class FileTree {
 
       if (n.type === 'dir') {
         const isOpen = expanded.has(n.path) || !!this.filterQuery
+        if (isOpen) row.classList.add('open')
         row.innerHTML =
-          `<span class="disclosure">${isOpen ? '▾' : '▸'}</span>` +
+          `<span class="disclosure"><svg class="icon" aria-hidden="true"><use href="#i-chev"/></svg></span>` +
+          `<span class="tree-ico"><svg class="icon" aria-hidden="true"><use href="${isOpen ? '#i-folder-open' : '#i-folder'}"/></svg></span>` +
           `<span class="tree-name folder">${this.hlName(n.name)}</span>`
         row.addEventListener('click', () => {
           this.lastClickedDir = n.path
@@ -227,11 +239,12 @@ export class FileTree {
       } else {
         const isRenaming = this.editing?.mode === 'rename' && this.editing.path === n.path
         if (isRenaming) {
-          row.innerHTML = '<span class="disclosure"></span>'
+          row.innerHTML = '<span class="disclosure"></span><span class="tree-ico file"><svg class="icon" aria-hidden="true"><use href="#i-file"/></svg></span>'
           row.appendChild(this.makeRenameInput(n.name, n.path))
         } else {
           row.innerHTML =
             '<span class="disclosure"></span>' +
+            '<span class="tree-ico file"><svg class="icon" aria-hidden="true"><use href="#i-file"/></svg></span>' +
             `<span class="tree-name file">${this.hlName(n.name)}</span>`
           row.addEventListener('click', (e) => {
             this.selected = n.path

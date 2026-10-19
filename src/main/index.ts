@@ -335,7 +335,7 @@ async function createWindow() {
         const renameResult = await win.webContents.executeJavaScript(`
           (async () => {
             const folderRow = document.querySelector('.tree-row[data-path$="/笔记"]');
-            if (folderRow && !folderRow.querySelector('.disclosure')?.textContent?.includes('▾')) {
+            if (folderRow && !folderRow.classList.contains('open')) {
               folderRow.dispatchEvent(new MouseEvent('click', {bubbles: true}));
               await new Promise(r => setTimeout(r, 250));
             }
@@ -433,7 +433,7 @@ async function createWindow() {
         const dragResult = await win.webContents.executeJavaScript(`
           (async () => {
             const folderRow = document.querySelector('.tree-row[data-path$="/笔记"]');
-            if (folderRow && !folderRow.querySelector('.disclosure')?.textContent?.includes('▾')) {
+            if (folderRow && !folderRow.classList.contains('open')) {
               folderRow.dispatchEvent(new MouseEvent('click', {bubbles: true}));
               await new Promise(r => setTimeout(r, 300));
             }
@@ -446,7 +446,7 @@ async function createWindow() {
             dst.dispatchEvent(new DragEvent('drop', {bubbles: true, dataTransfer: dt}));
             await new Promise(r => setTimeout(r, 900));
             // the target folder may be collapsed — expand it before asserting the moved row exists
-            if (dst && !dst.querySelector('.disclosure')?.textContent?.includes('▾')) {
+            if (dst && !dst.classList.contains('open')) {
               dst.dispatchEvent(new MouseEvent('click', {bubbles: true}));
               await new Promise(r => setTimeout(r, 400));
             }
@@ -662,15 +662,27 @@ async function createWindow() {
               }
               document.getElementById('tab-files')?.click();
               await new Promise(r => setTimeout(r, 300));
-              return JSON.stringify({paneExists: !!pane, count: items.length, hasTravel, filtered, texts: texts.slice(0, 6)});
+              // sidebar structure: count chip, per-tab filter visibility, svg tree glyphs
+              const docCount = document.getElementById('library-count')?.textContent ?? '';
+              let filterOnTags = false;
+              {
+                document.getElementById('tab-tags')?.click();
+                filterOnTags = document.getElementById('tree-filter')?.classList.contains('hidden') === true;
+                document.getElementById('tab-files')?.click();
+              }
+              const folderGlyph = !!document.querySelector('.tree-row .tree-ico use');
+              const chevGlyph = !!document.querySelector('.tree-row .disclosure use');
+              return JSON.stringify({paneExists: !!pane, count: items.length, hasTravel, filtered, texts: texts.slice(0, 6),
+                docCount, filterOnTags, folderGlyph, chevGlyph});
             } catch (err) {
               return JSON.stringify({error: String(err)});
             }
           })()
         `)
         const tg = JSON.parse(tagCheck)
-        console.log(`[tag-check] pane=${tg.paneExists} count=${tg.count} travel=${tg.hasTravel} filtered=${tg.filtered} tags=${JSON.stringify(tg.texts)} ${tg.paneExists && tg.hasTravel && tg.filtered ? 'OK' : 'FAIL'}`)
-        assertUiCheck('tag', tg.paneExists && tg.hasTravel && tg.filtered, tg)
+        const tgOk = tg.paneExists && tg.hasTravel && tg.filtered && /^\d+ 篇$/.test(tg.docCount) && tg.filterOnTags && tg.folderGlyph && tg.chevGlyph
+        console.log(`[tag-check] pane=${tg.paneExists} count=${tg.count} travel=${tg.hasTravel} filtered=${tg.filtered} docs=${tg.docCount} filterHiddenOnTags=${tg.filterOnTags} svgGlyphs=${tg.folderGlyph && tg.chevGlyph} tags=${JSON.stringify(tg.texts)} ${tgOk ? 'OK' : 'FAIL'}`)
+        assertUiCheck('tag', tgOk, tg)
         // multi-tab check: cmd-click opens a new tab, switching restores, close works
         const tabCheck = await win.webContents.executeJavaScript(`
           (async () => {

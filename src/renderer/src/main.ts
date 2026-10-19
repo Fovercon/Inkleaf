@@ -617,6 +617,7 @@ function setSidebarTab(tab: 'files' | 'recent' | 'tags') {
   $('#tab-recent').setAttribute('aria-pressed', String(tab === 'recent'))
   $('#tab-tags').setAttribute('aria-pressed', String(tab === 'tags'))
   treeHost.style.display = tab === 'files' ? '' : 'none'
+  $('#tree-filter').classList.toggle('hidden', tab !== 'files')
   $('#recent-list').classList.toggle('visible', tab === 'recent')
   $('#tag-list').classList.toggle('visible', tab === 'tags')
   if (tab === 'recent') renderRecent()
@@ -644,7 +645,7 @@ function renderRecent() {
         ? p.slice(root.length + 1, p.lastIndexOf('/')) || '（书库根目录）'
         : p.slice(0, p.lastIndexOf('/'))
     item.innerHTML = `<div class="ri-name">${escapeHtml(name)}</div><div class="ri-dir">${escapeHtml(dir)}</div>`
-    item.addEventListener('click', () => void openFile(p))
+    item.addEventListener('click', (e) => void openFile(p, e.metaKey || e.ctrlKey ? { newTab: true } : undefined))
     host.appendChild(item)
   })
 }
@@ -696,7 +697,7 @@ async function renderTags(selectedTag?: string) {
     item.innerHTML = `<div class="ri-name"></div><div class="ri-dir"></div>`
     ;(item.querySelector('.ri-name') as HTMLElement).textContent = name
     ;(item.querySelector('.ri-dir') as HTMLElement).textContent = dir
-    item.addEventListener('click', () => void openFile(p))
+    item.addEventListener('click', (e) => void openFile(p, e.metaKey || e.ctrlKey ? { newTab: true } : undefined))
     host.appendChild(item)
   }
 }
@@ -1104,6 +1105,11 @@ async function boot() {
   })
 
   tree.onOpenFile = (p, newTab) => void openFile(p, { newTab })
+  tree.onCountChange = (count) => {
+    const chip = $('#library-count')
+    chip.textContent = `${count} 篇`
+    chip.hidden = count <= 0
+  }
   tree.onCreated = (p) => void openFile(p)
   tree.onMutate = operation => serializeNavigation(async () => {
     editor.setMutationLocked(true)

@@ -215,22 +215,33 @@ body[data-platform='linux'] #titlebar {
   user-select: none;
 }
 
-/* sidebar tabs: 文件 / 最近 */
+/* sidebar header: library identity + document count */
 #library-title {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 20px 18px;
-  font-size: 14px;
+  gap: 8px;
+  padding: 20px 20px 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
 }
-#library-title .lib-icon {
-  color: var(--accent);
+#library-title .lib-icon { color: var(--accent); flex: none; }
+#library-name { overflow: hidden; text-overflow: ellipsis; }
+#library-count {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
 }
+#tree-filter.hidden { display: none; }
 
 /* sidebar edge collapse handle */
 #sidebar { position: relative; }
@@ -355,14 +366,14 @@ body[data-platform='linux'] #titlebar {
   text-overflow: ellipsis;
 }
 .ri-dir {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   margin-top: 1px;
 }
-.recent-empty { padding: 14px 12px; font-size: 12.5px; color: var(--text-dim); }
+.recent-empty { padding: 14px 12px; font-size: 12px; color: var(--text-dim); }
 
 #file-tree, #outline {
   flex: 1;
@@ -381,9 +392,9 @@ body[data-platform='linux'] #titlebar {
 .tree-row {
   display: flex;
   align-items: center;
-  height: 34px;
-  margin: 2px 0;
-  padding: 0 9px;
+  height: 30px;
+  margin: 1px 0;
+  padding: 0 8px;
   border-radius: 7px;
   cursor: pointer;
   user-select: none;
@@ -397,30 +408,55 @@ body[data-platform='linux'] #titlebar {
   box-shadow: inset 2px 0 var(--accent);
 }
 .tree-row .disclosure {
-  width: 16px;
+  width: 15px;
+  height: 15px;
   flex: none;
-  font-size: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-dim);
-  text-align: center;
 }
+.tree-row .disclosure .icon {
+  width: 11px;
+  height: 11px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.16s ease;
+}
+.tree-row.open .disclosure .icon { transform: rotate(90deg); }
+.tree-row .tree-ico {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tree-row .tree-ico .icon {
+  width: 14.5px;
+  height: 14.5px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tree-row:hover .tree-ico { color: var(--text); }
+.tree-row.selected .tree-ico { color: var(--accent); }
 .tree-row .tree-name {
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .tree-row .tree-name.folder { color: var(--text); font-weight: 500; }
-.tree-row .tree-name.file::before {
-  content: '';
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  opacity: 0.55;
-  margin-right: 7px;
-  vertical-align: 2px;
-}
-.tree-empty { padding: 2px 0 2px 32px; font-size: 12px; color: var(--text-dim); }
+.tree-row.selected .tree-name.folder { color: var(--accent); }
+.tree-empty { padding: 3px 0 3px 24px; font-size: 12px; color: var(--text-dim); }
+.tree-empty.search-miss { padding: 22px 12px; text-align: center; line-height: 1.8; }
 
 /* outline */
 .outline-item {
@@ -877,10 +913,8 @@ button.is-loading .icon { display: none; }
 .tb[aria-pressed='true'] { color: var(--accent); }
 .tb[aria-pressed='false'] { color: var(--text-dim); }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.sidebar-eyebrow { padding: 24px 20px 10px; font-size: 9px; letter-spacing: .16em; color: var(--text-dim); font-weight: 600; }
 #library-name { overflow: hidden; text-overflow: ellipsis; }
 #tree-filter > .icon { position: absolute; left: 10px; top: 10px; width: 14px; height: 14px; color: var(--text-dim); pointer-events: none; }
-.sidebar-note { display: flex; align-items: center; gap: 7px; flex: none; margin: 0 18px; padding: 16px 0; border-top: 1px solid var(--border); font-size: 10px; color: var(--text-dim); white-space: nowrap; }
 .leaf-dot { display: inline-block; flex: none; width: 6px; height: 9px; border-radius: 6px 0 6px 0; background: var(--accent); transform: rotate(25deg); opacity: .8; }
 .pane-heading { height: 43px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 23px; border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; color: var(--text-dim); user-select: none; }
 .pane-heading small { font-size: 8px; letter-spacing: .14em; font-weight: 500; opacity: .8; }
