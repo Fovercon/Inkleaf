@@ -21,6 +21,7 @@ import { setWikilinkNav } from './wikilink'
 import { setBacklinkNav, refreshBacklinks } from './backlink'
 import { TabManager, type DocSession } from './docSession'
 import { bootPlugins } from './pluginRuntime'
+import { openPluginCenter, setupPluginCenter } from './pluginCenter'
 import { registerCalloutPlugin } from './bundled-callout'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
@@ -836,6 +837,7 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'close-tab', title: '关闭标签页', run: () => void closeTabUi(tabs.activeIndex), when: () => tabs.count > 0 })
   registerCommand({ id: 'go-home', title: '回到首页', run: () => void goHomeUi(), when: () => tabs.count > 0 || !!runtime.currentFile })
   registerCommand({ id: 'quick-switch', title: '快速切换文件', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'plugins', title: '插件中心…', run: () => openPluginCenter() })
   registerCommand({ id: 'search', title: '在书库中搜索', run: () => openPaletteFor('search'), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'export-pdf', title: '导出为 PDF…', run: () => void exportCurrent('pdf'), when: () => !!runtime.currentFile })
   registerCommand({ id: 'export-html', title: '导出为 HTML…', run: () => void exportCurrent('html'), when: () => !!runtime.currentFile })
@@ -1014,6 +1016,7 @@ async function boot() {
   // 内置插件立即激活；外部插件通过沙箱声明注册。
   registerCalloutPlugin()
   void bootPlugins()
+  setupPluginCenter()
   applyTheme()
   applyFontScale(getState().fontScale)
   editor.mount(editorHost, currentTheme() === 'dark')
