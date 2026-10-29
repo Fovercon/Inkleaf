@@ -1,6 +1,6 @@
 {
   "name": "inkleaf",
-  "version": "0.4.6",
+  "version": "0.5.0",
   "description": "墨页 · Inkleaf — a quiet place to read and write Markdown",
   "main": "out/main.js",
   "author": "Inkleaf contributors",
@@ -20,12 +20,13 @@
     "test:updates": "node scripts/test-updater.mjs",
     "test:platform": "node scripts/test-platform.mjs",
     "test:platform-ui": "node scripts/test-platform-ui.mjs",
-    "test:regressions": "node scripts/test-unit.mjs tests/index-service.test.ts tests/ipc-library-race.test.ts tests/local-assets.test.ts tests/local-images.test.ts tests/doc-session.test.ts tests/plugins-security.test.ts tests/plugins-path.test.ts tests/preview-security.test.ts",
+    "test:regressions": "node scripts/test-unit.mjs tests/index-service.test.ts tests/ipc-library-race.test.ts tests/local-assets.test.ts tests/local-images.test.ts tests/doc-session.test.ts tests/plugins-security.test.ts tests/plugins-path.test.ts tests/preview-security.test.ts tests/document-history.test.ts tests/markdown-tools.test.ts tests/knowledge-service.test.ts",
     "test:doc-session-ui": "node tests/doc-session-renderer.mjs",
     "test:plugin-dom-ui": "node tests/plugin-dom-renderer.mjs",
     "test:plugin-center-ui": "node tests/plugin-center-renderer.mjs",
     "test:bug-tickets-ui": "node tests/bug-tickets-renderer.mjs",
-    "test:ui-failure": "node scripts/test-ui-failure.mjs"
+    "test:ui-failure": "node scripts/test-ui-failure.mjs",
+    "test:knowledge-ui": "node tests/knowledge-renderer.mjs"
   },
   "build": {
     "appId": "com.fovercon.inkleaf",
@@ -137,6 +138,7 @@
     "markdown-it-footnote": "^4.0.0",
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^11.4.1",
+    "yaml": "^2.9.1",
     "yauzl": "^3.4.0"
   }
 }

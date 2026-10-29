@@ -1209,3 +1209,41 @@ body.typewriter-mode .cm-scroller { scroll-behavior: smooth; }
   padding: 12px 16px;
   border-top: 1px solid var(--border);
 }
+
+/* Quiet paper surfaces for document and library tools. */
+.knowledge-dialog { color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; width: min(620px, calc(100vw - 48px)); max-height: calc(100vh - 64px); box-shadow: 0 24px 80px #0003; }
+.knowledge-dialog.wide { width: min(960px, calc(100vw - 48px)); }
+.knowledge-dialog::backdrop { background: #18231c66; backdrop-filter: blur(3px); }
+.knowledge-dialog h2 { font: 600 21px var(--font-ui); margin: 0 0 18px; }
+.knowledge-dialog button, .knowledge-dialog input, .knowledge-dialog select, .knowledge-dialog textarea { font: inherit; color: inherit; border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px; background: var(--bg); }
+.knowledge-dialog button { cursor: pointer; }
+.knowledge-dialog button:hover, .knowledge-dialog button.selected { border-color: var(--accent); background: var(--accent-soft); }
+.knowledge-dialog :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.knowledge-dialog :disabled { opacity: .5; cursor: wait; }
+.tool-body { max-height: calc(100vh - 270px); overflow: auto; padding: 2px; }
+.tool-row, .tool-actions { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.tool-actions { margin-top: 16px; justify-content: flex-end; }
+.tool-field { display: flex; flex-direction: column; gap: 5px; margin: 8px 0; flex: 1; min-width: 110px; }
+.tool-field input { min-width: 0; }
+.tool-hint, .tool-status { font-size: 12px; color: var(--text-dim); line-height: 1.7; }
+.tool-status.error { color: #bd5144; }
+.history-split { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 2fr); gap: 16px; margin-top: 16px; }
+.history-list { display: flex; flex-direction: column; gap: 8px; max-height: 330px; overflow: auto; }
+.history-list button { text-align: left; font-size: 12px; }
+.tool-diff { padding: 14px; margin: 0; white-space: pre-wrap; word-break: break-word; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; max-height: 330px; overflow: auto; font: 12px/1.7 monospace; }
+.tool-menu { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.tool-menu button { padding: 16px; text-align: left; }
+@media (max-width: 650px) { .history-split { grid-template-columns: 1fr; } }
+.search-hit { display: block; text-align: left; width: 100%; margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.batch-preview details { border-bottom: 1px solid var(--border); padding: 12px 0; }
+.batch-preview summary { cursor: pointer; }
+.batch-preview .tool-diff { margin-top: 10px; }
+.tool-row textarea { flex: 2; min-width: 160px; }
+#tag-list details { padding-left: 12px; }
+#tag-list summary { cursor: pointer; }
+#tag-list summary .tag-item { display: inline-flex; width: calc(100% - 20px); }
+#tag-list button { border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; }
+#backlink-list h4 { margin: 12px 10px 6px; font-weight: 500; color: var(--text-dim); }
+button.backlink-item { display: block; width: 100%; text-align: left; color: inherit; border: 0; background: transparent; cursor: pointer; }
+.bl-context { display: block; font-size: 11px; white-space: pre-wrap; line-height: 1.6; color: var(--text-dim); padding-top: 6px; }
+.template-source { width: 100%; resize: vertical; font-family: var(--font-mono) !important; line-height: 1.7; }

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { UpdateState } from '../shared/updates'
+import type { HistoryList, HistoryVersion, SearchOptions, SearchReport, BatchPreview, BatchResult } from '../shared/knowledge'
 import { CH, type TreeNode, type TextHit, type OpResult, type ConfirmOptions, type FsEvent, type TagCount, type Backlink, type ImageResolution } from '../shared/ipc'
 
 const api = {
@@ -29,7 +30,7 @@ const api = {
   closeLibrary: (): Promise<void> => ipcRenderer.invoke(CH.libClose),
   indexTags: (): Promise<TagCount[]> => ipcRenderer.invoke(CH.indexTags),
   indexBacklinks: (name: string): Promise<Backlink[]> => ipcRenderer.invoke(CH.indexBacklinks, name),
-  indexResolve: (name: string): Promise<string | null> => ipcRenderer.invoke(CH.indexResolve, name),
+  indexResolve: (name: string, from?: string): Promise<string | null> => ipcRenderer.invoke(CH.indexResolve, name, from),
   indexPeek: (p: string): Promise<{ title: string; excerpt: string } | null> => ipcRenderer.invoke(CH.indexPeek, p),
   indexFilesByTag: (tag: string): Promise<string[]> => ipcRenderer.invoke(CH.indexFilesByTag, tag),
   indexListNames: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke(CH.indexListNames),
@@ -38,6 +39,17 @@ const api = {
   pluginsInstall: (): Promise<{ ok: boolean; canceled?: boolean; error?: string; id?: string }> => ipcRenderer.invoke(CH.pluginsInstall),
   pluginsUninstall: (id: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke(CH.pluginsUninstall, id),
   readFile: (p: string): Promise<string> => ipcRenderer.invoke(CH.fsRead, p),
+  tagPreview: (from: string, to: string): Promise<BatchPreview> => ipcRenderer.invoke(CH.tagPreview, from, to),
+  createDocument: (relative: string, content: string, existing = false, from?: string): Promise<string> => ipcRenderer.invoke(CH.createDocument, relative, content, existing, from),
+  indexRelations: (target: string): Promise<{ backlinks: (Backlink & { context: string })[]; mentions: (Backlink & { context: string })[] }> => ipcRenderer.invoke(CH.indexRelations, target),
+  advancedSearch: (options: SearchOptions): Promise<SearchReport> => ipcRenderer.invoke(CH.advancedSearch, options),
+  replacePreview: (options: SearchOptions, replacement: string): Promise<BatchPreview> => ipcRenderer.invoke(CH.replacePreview, options, replacement),
+  batchApply: (id: string, paths: string[]): Promise<BatchResult> => ipcRenderer.invoke(CH.batchApply, id, paths),
+  historyList: (p: string): Promise<HistoryList> => ipcRenderer.invoke(CH.historyList, p),
+  historyVersion: (p: string, id: string): Promise<HistoryVersion> => ipcRenderer.invoke(CH.historyVersion, p, id),
+  historyCapture: (p: string): Promise<void> => ipcRenderer.invoke(CH.historyCapture, p),
+  historyRestore: (p: string, id: string, expected: string): Promise<string> => ipcRenderer.invoke(CH.historyRestore, p, id, expected),
+  historyLimit: (limit: number): Promise<void> => ipcRenderer.invoke(CH.historyLimit, limit),
   resolveImage: (source: string, documentPath: string): Promise<ImageResolution> =>
     ipcRenderer.invoke(CH.imageResolve, source, documentPath),
   writeFile: (p: string, content: string): Promise<void> => ipcRenderer.invoke(CH.fsWrite, p, content),

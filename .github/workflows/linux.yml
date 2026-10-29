@@ -70,6 +70,10 @@ jobs:
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:doc-session-ui
 
+      - name: Verify knowledge tools with real IPC and local documents
+        timeout-minutes: 4
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:knowledge-ui
+
       - name: Verify plugin HTML preserves layout and interactions
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:plugin-dom-ui
@@ -115,6 +119,8 @@ jobs:
             verify/linux-*.log
             verify/linux-*-boot-ack.json
             verify/plugin-center-*.png
+            verify/knowledge-*.png
+            verify/knowledge-export.pdf
 
   ubuntu24-x64:
     name: Ubuntu 24.04 x64 compatibility

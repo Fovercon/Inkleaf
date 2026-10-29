@@ -48,6 +48,7 @@
     </div>
     <span class="tb-sep"></span>
     <button id="btn-theme" title="切换主题：跟随系统 / 暖白 / 羊皮纸 / 护眼绿 / 深色" aria-label="切换主题" class="tb"><svg class="icon"><use href="#i-theme"/></svg></button>
+    <button id="btn-tools" title="创作与知识工具" aria-label="创作与知识工具" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
     <button id="btn-plugins" title="插件中心" aria-label="插件中心" class="tb"><svg class="icon"><use href="#i-plugins"/></svg></button>
     <button id="btn-updates" title="检查更新" aria-label="检查软件更新" class="tb"><svg class="icon"><use href="#i-update"/></svg></button>
   </div>
@@ -56,7 +57,7 @@
 <div id="workspace">
   <button id="sidebar-expand" title="展开书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="展开书库栏"><svg class="icon"><use href="#i-right"/></svg></button>
   <aside id="sidebar" aria-label="书库">
-    <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span><span id="library-count" hidden></span></div>
+    <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span><span id="library-count" hidden></span><button id="library-switch" class="tb" title="切换书库" aria-label="切换书库">⇄</button></div>
     <div class="sidebar-tabs" role="group" aria-label="书库视图">
       <button id="tab-files" class="stab active">全部文件</button>
       <button id="tab-recent" class="stab">最近打开</button>
@@ -77,7 +78,8 @@
         <p id="library-empty-description">从左侧选择一篇文档，或新建一页，记录此刻的想法。</p>
         <div class="empty-actions">
           <button id="library-new-file" class="primary"><svg class="icon"><use href="#i-plus"/></svg>新建一页</button>
-          <button id="library-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件</button>
+          <button id="home-switch-library" class="empty-button">最近书库</button>
+        <button id="library-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件</button>
         </div>
         <div class="home-recent-block" id="home-recent-block" hidden>
           <div class="home-recent-label">最近打开</div>
@@ -118,7 +120,8 @@
     <p class="empty-description">收藏一份灵感，展开一页思绪。<br>从你的 Markdown 文件或书库开始。</p>
     <div class="empty-actions">
       <button id="empty-open-folder" class="primary"><svg class="icon"><use href="#i-folder"/></svg>打开书库<kbd data-shortcut="CmdOrCtrl+Shift+O">⇧⌘O</kbd></button>
-      <button id="empty-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件<kbd data-shortcut="CmdOrCtrl+O">⌘O</kbd></button>
+      <button id="empty-switch-library" class="empty-button">最近书库</button>
+        <button id="empty-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件<kbd data-shortcut="CmdOrCtrl+O">⌘O</kbd></button>
     </div>
     <p class="empty-hint">也可以将文件夹或 .md 文件拖到这里</p>
     <div class="empty-rule"></div>

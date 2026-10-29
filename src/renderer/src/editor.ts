@@ -119,6 +119,7 @@ export class EditorPane {
   private saveTimer: number | null = null
   private saving: Promise<void> | null = null
   private dark = false
+  private lineEnding = '\n'
   /** true while openFile/clear swap the document — suppresses dirty tracking and re-render */
   private loading = false
   /** last time this editor itself wrote the file — used to ignore the resulting fs watch event */
@@ -225,6 +226,7 @@ export class EditorPane {
 
   openFile(path: string, content: string) {
     this.path = path
+    this.lineEnding = content.includes('\r\n') ? '\r\n' : '\n'
     this.cancelSave()
     this.setDirty(false)
     this.loading = true
@@ -266,7 +268,7 @@ export class EditorPane {
 
   /** 序列化当前编辑器状态（含撤销历史）——多标签切换保存用 */
   exportState(): unknown {
-    return this.view ? this.view.state.toJSON({ history: historyField }) : null
+    return this.view ? { ...this.view.state.toJSON({ history: historyField }), lineEnding: this.lineEnding } : null
   }
 
   /** 恢复编辑器状态；JSON 为空时置空文档 */
@@ -274,6 +276,7 @@ export class EditorPane {
     if (!this.view) return
     this.cancelSave()
     this.loading = true
+    this.lineEnding = (json as { lineEnding?: string })?.lineEnding === '\r\n' ? '\r\n' : '\n'
     try {
       const state =
         json && typeof json === 'object'
@@ -296,7 +299,19 @@ export class EditorPane {
   }
 
   getContent(): string {
-    return this.view?.state.doc.toString() ?? ''
+    return this.view?.state.doc.toString().replace(/\n/g, this.lineEnding) ?? ''
+  }
+
+  /** Tool edits are one ordinary transaction, preserving undo/redo. */
+  replaceContent(content: string) {
+    if (!this.view) return
+    this.view.dispatch({ changes: { from: 0, to: this.view.state.doc.length, insert: content.replace(/\r\n/g, '\n') }, userEvent: 'input' })
+  }
+  sourceSelection() {
+    const state = this.view?.state
+    if (!state) return { from: 0, to: 0 }
+    const offset = (p: number) => p + (this.lineEnding === '\r\n' ? state.doc.lineAt(p).number - 1 : 0)
+    return { from: offset(state.selection.main.from), to: offset(state.selection.main.to) }
   }
 
   isDirty() {

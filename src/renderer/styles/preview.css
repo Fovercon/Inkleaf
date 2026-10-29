@@ -275,3 +275,12 @@
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+.md-preview .document-toc { padding: 20px 24px; margin: 24px 0; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); font: 14px/1.8 var(--font-ui); }
+.md-preview .document-toc ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.md-preview .document-toc li { margin: 3px 0; }
+.md-preview .document-toc .toc-level-2 { padding-left: 16px; }
+.md-preview .document-toc .toc-level-3 { padding-left: 32px; }
+.md-preview .document-toc .toc-level-4 { padding-left: 48px; }
+.md-preview .document-toc .toc-level-5 { padding-left: 64px; }
+.md-preview .document-toc .toc-level-6 { padding-left: 80px; }
