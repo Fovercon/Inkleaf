@@ -20,7 +20,7 @@ import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight
 import { setWikilinkNav } from './wikilink'
 import { setBacklinkNav, refreshBacklinks } from './backlink'
 import { TabManager, type DocSession } from './docSession'
-import { bootPlugins } from './pluginRuntime'
+import { bootPlugins, onPluginStateChange, pluginSnapshot } from './pluginRuntime'
 import { openPluginCenter, setupPluginCenter } from './pluginCenter'
 import { registerCalloutPlugin } from './bundled-callout'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
@@ -1017,6 +1017,15 @@ async function boot() {
   registerCalloutPlugin()
   void bootPlugins()
   setupPluginCenter()
+  let pluginRenderTimer: ReturnType<typeof setTimeout>
+  onPluginStateChange(() => {
+    clearTimeout(pluginRenderTimer)
+    // Wait for activation to settle before rendering newly registered hooks.
+    if (pluginSnapshot().some(plugin => plugin.state === 'activating')) return
+    pluginRenderTimer = setTimeout(() => {
+      if (runtime.currentFile) void renderPreview(previewScroll, preview, editor.getContent(), runtime.currentFile)
+    }, 50)
+  })
   applyTheme()
   applyFontScale(getState().fontScale)
   editor.mount(editorHost, currentTheme() === 'dark')

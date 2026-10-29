@@ -1,6 +1,6 @@
 {
   "name": "inkleaf",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "墨页 · Inkleaf — a quiet place to read and write Markdown",
   "main": "out/main.js",
   "author": "Inkleaf contributors",
@@ -23,6 +23,7 @@
     "test:regressions": "node scripts/test-unit.mjs tests/index-service.test.ts tests/ipc-library-race.test.ts tests/local-assets.test.ts tests/local-images.test.ts tests/doc-session.test.ts tests/plugins-security.test.ts tests/plugins-path.test.ts tests/preview-security.test.ts",
     "test:doc-session-ui": "node tests/doc-session-renderer.mjs",
     "test:plugin-dom-ui": "node tests/plugin-dom-renderer.mjs",
+    "test:plugin-center-ui": "node tests/plugin-center-renderer.mjs",
     "test:bug-tickets-ui": "node tests/bug-tickets-renderer.mjs",
     "test:ui-failure": "node scripts/test-ui-failure.mjs"
   },

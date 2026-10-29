@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { build } from 'esbuild'
-import { mkdtemp, mkdir, writeFile, symlink, rm, realpath } from 'node:fs/promises'
+import { mkdtemp, mkdir, writeFile, symlink, rm, realpath, readdir, readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import os from 'node:os'
@@ -12,9 +12,12 @@ async function fixture() {
   const root = path.join(directory, 'plugins')
   await mkdir(root)
   ;(globalThis as any).__pluginUserData = directory
+  const handlers = new Map<string, (...args: any[]) => Promise<any>>()
+  const bridge = { handlers, selected: '', trash: async (target: string) => rm(target, { recursive: true }), openError: '' }
+  ;(globalThis as any).__pluginHostFixture = bridge
   const bundle = await build({ entryPoints: ['src/main/plugins-host.ts'], bundle: true, write: false, platform: 'node', format: 'cjs', logLevel: 'silent', plugins: [{ name: 'mock-electron', setup(build) {
     build.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron', namespace: 'fixture' }))
-    build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `export const app={getPath:()=>globalThis.__pluginUserData};export const ipcMain={handle(){}};export const dialog={};export const shell={}` }))
+    build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `const f=globalThis.__pluginHostFixture;export const app={getPath:()=>globalThis.__pluginUserData};export const ipcMain={handle:(id,fn)=>f.handlers.set(id,fn)};export const dialog={showOpenDialog:async()=>({canceled:!f.selected,filePaths:f.selected?[f.selected]:[]})};export const shell={trashItem:path=>f.trash(path),openPath:async()=>f.openError}` }))
   } }] })
   const module = { exports: {} as any }
   new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(path.join(repository, 'package.json')))
@@ -24,7 +27,8 @@ async function fixture() {
     await writeFile(path.join(plugin, 'ink.plugin.json'), JSON.stringify({ id: name, version: '1.0.0', main, permissions }))
     return plugin
   }
-  return { directory, root, install, api: module.exports as any }
+  module.exports.registerPluginIpc()
+  return { directory, root, install, api: module.exports as any, bridge, invoke: (channel: string, ...args: unknown[]) => handlers.get('plugins:' + channel)!(null, ...args) }
 }
 
 test('manifest and protocol consistently serve Unicode paths within their own plugin', async t => {
@@ -35,6 +39,66 @@ test('manifest and protocol consistently serve Unicode paths within their own pl
   const discovered = await api.listPlugins()
   assert.equal(discovered.length, 1)
   assert.equal(await api.resolvePluginFile(discovered[0].mainUrl), path.join(plugin, '入口 文件.mjs'))
+})
+
+test('folder install uses manifest identity, rejects duplicates, and serializes concurrent requests', async t => {
+  const { directory, root, bridge, invoke } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  bridge.selected = path.join(directory, 'My Download v1')
+  await mkdir(bridge.selected)
+  await writeFile(path.join(bridge.selected, 'ink.plugin.json'), JSON.stringify({ id: 'demo', version: '1.0.0', permissions: [], main: 'main.mjs' }))
+  await writeFile(path.join(bridge.selected, 'main.mjs'), 'export function activate() {}')
+  const results = await Promise.all([invoke('install'), invoke('install')])
+  assert.equal(results.filter(r => r.ok).length, 1)
+  assert.equal(results.find(r => r.ok).id, 'demo')
+  assert.deepEqual(await readdir(root), ['demo'])
+  assert.match(await readFile(path.join(root, 'demo', 'main.mjs'), 'utf8'), /activate/)
+})
+
+test('unsafe or failed copies leave no partial install; cancellation is explicit', async t => {
+  const { directory, root, bridge, invoke } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  assert.equal((await invoke('install')).canceled, true)
+  bridge.selected = path.join(directory, 'download')
+  await mkdir(bridge.selected)
+  await writeFile(path.join(bridge.selected, 'ink.plugin.json'), JSON.stringify({ id: 'demo', version: '1.0.0', permissions: [] }))
+  await writeFile(path.join(bridge.selected, 'main.mjs'), 'export function activate() {}')
+  await symlink(directory, path.join(bridge.selected, 'escape'))
+  assert.equal((await invoke('install')).ok, false)
+  assert.deepEqual(await readdir(root), [])
+  bridge.selected = directory
+  await writeFile(path.join(directory, 'ink.plugin.json'), JSON.stringify({ id: 'ancestor', version: '1.0.0', permissions: [] }))
+  await writeFile(path.join(directory, 'main.mjs'), '')
+  assert.equal((await invoke('install')).ok, false, 'cannot copy an ancestor of the plugin root into itself')
+  assert.deepEqual(await readdir(root), [])
+})
+
+test('uninstall resolves legacy folder names by manifest ID and reports trash failures without deletion', async t => {
+  const { directory, root, install, bridge, invoke } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const folder = await install('old-folder', 'main.mjs')
+  await writeFile(path.join(folder, 'main.mjs'), '')
+  await writeFile(path.join(folder, 'ink.plugin.json'), JSON.stringify({ id: 'demo', version: '1.0.0', permissions: [] }))
+  const trash = bridge.trash
+  bridge.trash = async () => { throw Error('trash unavailable') }
+  const failed = await invoke('uninstall', 'demo')
+  assert.equal(failed.ok, false)
+  assert.match(failed.error, /trash unavailable/)
+  assert.deepEqual(await readdir(root), ['old-folder'])
+  bridge.trash = trash
+  assert.equal((await invoke('uninstall', 'demo')).ok, true)
+  assert.deepEqual(await readdir(root), [])
+  assert.equal((await invoke('uninstall', '../outside')).ok, false)
+})
+
+test('directory scan and reveal failures are surfaced rather than looking like an empty plugin collection', async t => {
+  const { directory, root, api, bridge, invoke } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  bridge.openError = 'no file manager'
+  await assert.rejects(invoke('reveal'), /no file manager/)
+  await rm(root, { recursive: true })
+  await writeFile(root, 'not a directory')
+  await assert.rejects(api.listPlugins())
 })
 
 test('encoded traversal, cross-plugin paths, and escaping main symlinks fail closed', async t => {

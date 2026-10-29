@@ -131,10 +131,12 @@
   <span id="editor-stats"></span>
   <span class="status-shortcut">快速切换 <kbd data-shortcut="CmdOrCtrl+P">⌘P</kbd></span>
 </footer>
-<div id="pc-overlay" role="dialog" aria-modal="true" aria-label="插件中心">
+<div id="pc-overlay" role="dialog" aria-modal="true" aria-label="插件中心" aria-describedby="pc-hint">
   <div class="pc-dialog">
     <div class="pc-top"><span class="pc-heading">插件中心</span><button class="pc-close" aria-label="关闭">✕</button></div>
+    <div class="pc-intro"><span id="pc-summary"></span><p id="pc-hint">按需扩展墨页。从本地文件夹安装，启用前可查看插件权限。</p></div>
     <div id="pc-list"></div>
+    <div id="pc-status" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="pc-footer">
       <button id="pc-reveal" class="pc-btn">打开插件文件夹</button>
       <button id="pc-install" class="pc-btn primary">从文件夹安装…</button>

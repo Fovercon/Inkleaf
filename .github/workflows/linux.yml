@@ -74,6 +74,10 @@ jobs:
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:plugin-dom-ui
 
+      - name: Verify plugin center lifecycle and failure recovery
+        timeout-minutes: 4
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:plugin-center-ui
+
       - name: Verify library selection and local image bug tickets in the real UI
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:bug-tickets-ui
@@ -110,6 +114,7 @@ jobs:
             verify/roundlinux-*
             verify/linux-*.log
             verify/linux-*-boot-ack.json
+            verify/plugin-center-*.png
 
   ubuntu24-x64:
     name: Ubuntu 24.04 x64 compatibility
