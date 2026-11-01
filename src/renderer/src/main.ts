@@ -15,6 +15,7 @@ import { openPalette } from './commandPalette'
 import { buildStandaloneHtml } from './export'
 import { setupUpdater } from './updater'
 import { setupPlatformUi } from './platform'
+import { setupTooltips } from './tooltips'
 import { registerCommand, runCommand } from './commands'
 import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
 import { setWikilinkNav } from './wikilink'
@@ -362,10 +363,12 @@ function renderTabs() {
     name.className = 'tab-name'
     name.textContent = p.split('/').pop() ?? p
     tab.title = p
-    const close = document.createElement('span')
+    const close = document.createElement('button')
     close.className = 'tab-close'
     close.textContent = '×'
-    close.title = '关闭标签页'
+    close.type = 'button'
+    close.title = `关闭「${name.textContent}」标签页`
+    close.setAttribute('aria-label', close.title)
     close.addEventListener('click', (e) => {
       e.stopPropagation()
       void closeTabUi(i)
@@ -1091,6 +1094,7 @@ function setupDragDrop() {
 
 async function boot() {
   setupPlatformUi()
+  setupTooltips()
   // 内置插件立即激活；外部插件通过沙箱声明注册。
   registerCalloutPlugin()
   void bootPlugins()

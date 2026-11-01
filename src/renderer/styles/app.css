@@ -1314,3 +1314,27 @@ button.pc-name { border: none; background: none; padding: 0; text-align: left; f
   .pc-footer .pc-btn { font-size: 10px; padding: 5px 8px; }
   .pc-subtitle { margin: 8px 0; }
 }
+
+/* A shared hint floats above dialogs and remains inside the viewport. */
+.ink-button-tooltip:popover-open {
+  display: block;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  max-width: min(300px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 4px 18px rgba(20, 30, 22, .14);
+  font: 12px/1.65 var(--font-ui);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+button.tab-close { font: inherit; border: 0; background: transparent; padding: 0; }
