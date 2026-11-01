@@ -15,14 +15,22 @@ import { openPalette } from './commandPalette'
 import { buildStandaloneHtml } from './export'
 import { setupUpdater } from './updater'
 import { setupPlatformUi } from './platform'
+import { setupTooltips } from './tooltips'
 import { registerCommand, runCommand } from './commands'
 import { applyFocusModes, toggleFocusMode, toggleTypewriter, setupFocusHighlight } from './focus'
 import { setWikilinkNav } from './wikilink'
 import { setBacklinkNav, refreshBacklinks } from './backlink'
 import { TabManager, type DocSession } from './docSession'
-import { bootPlugins } from './pluginRuntime'
+import { bootPlugins, onPluginStateChange, pluginSnapshot } from './pluginRuntime'
 import { openPluginCenter, setupPluginCenter } from './pluginCenter'
 import { registerCalloutPlugin } from './bundled-callout'
+import { openHistory, openProperties, type DocumentToolsContext } from './documentTools'
+import { openMedia } from './mediaTools'
+import { openTable } from './tableTools'
+import { openDaily, openTemplates } from './writingTools'
+import { rememberLibrary, libraryWorkspace, openLibraries, openLayouts } from './workspaces'
+import { openAdvancedSearch, openTagRename } from './searchTools'
+import { toolDialog, element } from './toolDialog'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
 const $ = (s: string) => document.querySelector<HTMLElement>(s)!
@@ -243,6 +251,8 @@ async function openLibraryNow(root: string, options?: OpenLibraryOptions): Promi
       libraryFailure = '当前编辑未能保存，请先保存后再切换书库。'
       return false
     }
+    if (runtime.libraryRoot) rememberLibrary(runtime.libraryRoot, { tabs: tabs.paths(), activeIndex: tabs.activeIndex, expanded: getState().expandedDirs })
+    const remembered = !options?.restoreSession ? libraryWorkspace(normalized) : undefined
     await sessionSave
     const treeData = await window.mdr.openLibrary(normalized)
     if (!treeData) throw new Error('Library is unavailable')
@@ -251,13 +261,18 @@ async function openLibraryNow(root: string, options?: OpenLibraryOptions): Promi
     if (!options?.restoreSession) closeFileUi()
     const filterInput = $('#tree-filter-input') as HTMLInputElement
     filterInput.value = ''
-    tree.load(treeData, true)
     const state = getState()
     state.collapsed.sidebar = false
-    state.expandedDirs = state.expandedDirs.filter(path => isInLibrary(path, normalized))
+    state.expandedDirs = remembered?.expanded ?? state.expandedDirs.filter(path => isInLibrary(path, normalized))
+    tree.load(treeData, true)
     saveState()
     setSidebarTab('files')
     $('#library-name').textContent = normalized.split('/').pop() || '书库'
+    rememberLibrary(normalized)
+    if (remembered?.tabs.length) {
+      tabs.restorePaths(remembered.tabs, remembered.activeIndex)
+      if (tabs.activePath) await openFileNow(tabs.activePath)
+    }
     persistSession()
     applyLayout()
     return true
@@ -302,8 +317,8 @@ function serializeNavigation<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 function cachedText(session: DocSession | null): string | null {
-  const json = session?.editorJSON as { doc?: unknown } | null
-  return typeof json?.doc === 'string' ? json.doc : null
+  const json = session?.editorJSON as { doc?: unknown; lineEnding?: string } | null
+  return typeof json?.doc === 'string' ? json.lineEnding === '\r\n' ? json.doc.replace(/\n/g, '\r\n') : json.doc : null
 }
 
 function showDocumentError(title: string, error: unknown) {
@@ -348,10 +363,12 @@ function renderTabs() {
     name.className = 'tab-name'
     name.textContent = p.split('/').pop() ?? p
     tab.title = p
-    const close = document.createElement('span')
+    const close = document.createElement('button')
     close.className = 'tab-close'
     close.textContent = '×'
-    close.title = '关闭标签页'
+    close.type = 'button'
+    close.title = `关闭「${name.textContent}」标签页`
+    close.setAttribute('aria-label', close.title)
     close.addEventListener('click', (e) => {
       e.stopPropagation()
       void closeTabUi(i)
@@ -652,11 +669,14 @@ function renderRecent() {
 }
 
 /** 标签面板：聚合标签 → 点击展开该标签下的文档 */
+let tagRequest = 0
 async function renderTags(selectedTag?: string) {
+  const request = ++tagRequest
   const host = $('#tag-list')
   host.innerHTML = ''
   const root = runtime.libraryRoot
   const tags = await window.mdr.indexTags().catch(() => [])
+  if (request !== tagRequest || root !== runtime.libraryRoot) return
   if (!tags.length) {
     const empty = document.createElement('div')
     empty.className = 'recent-empty'
@@ -665,16 +685,16 @@ async function renderTags(selectedTag?: string) {
     return
   }
   if (!selectedTag) {
-    for (const { tag, count } of tags) {
-      const item = document.createElement('div')
-      item.className = 'tag-item'
-      item.dataset.tag = tag
-      item.innerHTML = `<span class="tg-name"></span><span class="tg-count">${count}</span>`
-      ;(item.querySelector('.tg-name') as HTMLElement).textContent = tag
-      item.addEventListener('click', () => void renderTags(tag))
-      host.appendChild(item)
+    const rename=element('button','批量改名','tag-back'); rename.onclick=()=>openTagRename(documentTools); host.append(rename)
+    const draw=(prefix:string,parent:HTMLElement)=>{
+      for(const {tag,count} of tags.filter(t=>(t.tag.includes('/')?t.tag.slice(0,t.tag.lastIndexOf('/')):'')===prefix).sort((a,b)=>a.tag.localeCompare(b.tag))) {
+        const hasChildren=tags.some(t=>t.tag.startsWith(tag+'/')), label=tag.split('/').pop()!
+        const item=element('button',`${label} · ${count}`,'tag-item'); item.dataset.tag=tag; item.onclick=e=>{e.preventDefault();void renderTags(tag)}
+        if(hasChildren) { const details=element('details'),summary=element('summary'); summary.append(item); details.append(summary); draw(tag,details); parent.append(details) }
+        else parent.append(item)
+      }
     }
-    return
+    draw('',host); return
   }
   // selected: back button + files under this tag
   const back = document.createElement('div')
@@ -683,6 +703,7 @@ async function renderTags(selectedTag?: string) {
   back.addEventListener('click', () => void renderTags())
   host.appendChild(back)
   const files = await window.mdr.indexFilesByTag(selectedTag).catch(() => [])
+  if (request !== tagRequest || root !== runtime.libraryRoot) return
   if (!files.length) {
     const empty = document.createElement('div')
     empty.className = 'recent-empty'
@@ -810,6 +831,7 @@ async function closeLibrary() {
     editor.setMutationLocked(true)
     try {
       await saveAllDocuments()
+      if (runtime.libraryRoot) rememberLibrary(runtime.libraryRoot, { tabs: tabs.paths(), activeIndex: tabs.activeIndex, expanded: getState().expandedDirs })
       await window.mdr.closeLibrary()
       runtime.libraryRoot = null
       session.libraryRoot = null
@@ -826,7 +848,62 @@ async function closeLibrary() {
   })
 }
 
+const documentTools: DocumentToolsContext = {
+  selection: () => editor.sourceSelection(),
+  open: (path, line) => openFile(path, { line }),
+  edit: (path, expected, next) => serializeNavigation(async () => {
+    if (editor.currentPath !== path || editor.getContent() !== expected) throw new Error('文档已变化，请重新打开工具')
+    await editor.saveNow()
+    if (editor.currentPath !== path || editor.getContent() !== expected) throw new Error('文档已变化，请重新打开工具')
+    editor.replaceContent(next)
+    await editor.saveNow()
+    await renderPreview(previewScroll, preview, editor.getContent(), path)
+    buildOutline(preview, outlineNav)
+  }),
+  path: () => runtime.currentFile, root: () => runtime.libraryRoot, content: () => editor.getContent(),
+  save: () => serializeNavigation(saveAllDocuments),
+  mutate: (operation, paths) => serializeNavigation(async () => {
+    editor.setMutationLocked(true)
+    try {
+      await saveAllDocuments()
+      const result = await operation()
+      for (const path of paths) tabs.invalidate(path)
+      if (runtime.currentFile && paths.includes(runtime.currentFile)) await openFileNow(runtime.currentFile)
+      await tree.refresh()
+      if (getState().sidebarTab === 'tags') await renderTags()
+      void refreshBacklinks(runtime.currentFile)
+      return result
+    } finally { editor.setMutationLocked(false) }
+  }),
+}
+function openDocumentTools() {
+  const d = toolDialog('创作与知识工具'); d.body.classList.add('tool-menu')
+  d.button('插入正文目录', () => { d.dialog.close(); runCommand('insert-toc') }, d.body).disabled = !runtime.currentFile
+  d.button('每日笔记', () => { d.dialog.close(); openDaily(documentTools) }, d.body).disabled = !runtime.libraryRoot
+  d.button('每日笔记设置', () => { d.dialog.close(); openDaily(documentTools, true) }, d.body)
+  d.button('文档模板', () => { d.dialog.close(); openTemplates(documentTools) }, d.body)
+  d.button('最近书库与切换', () => { d.dialog.close(); openLibraries(openLibrary, openFolderAction) }, d.body)
+  d.button('阅读与写作布局', () => { d.dialog.close(); openLayouts(() => { applyFocusModes(); editor.setTypewriter(getState().typewriter); applyLayout() }) }, d.body)
+  for (const [title, action] of [['文档历史与恢复', () => openHistory(documentTools)], ['文档属性', () => openProperties(documentTools)], ['表格行列与对齐', () => openTable(documentTools)], ['图片尺寸与文字', () => openMedia(documentTools, true)], ['链接文字与地址', () => openMedia(documentTools, false)], ['书库搜索与替换', () => openAdvancedSearch(documentTools)], ['标签批量改名', () => openTagRename(documentTools)]] as const) {
+    d.button(title, () => { d.dialog.close(); action() }, d.body).disabled = ['书库搜索与替换','标签批量改名'].includes(title) ? !runtime.libraryRoot : !runtime.currentFile
+  }
+}
+
 function registerBuiltinCommands() {
+  registerCommand({ id: 'recent-libraries', title: '最近书库与切换…', run: () => openLibraries(openLibrary, openFolderAction) })
+  registerCommand({ id: 'workspace-layouts', title: '阅读与写作布局…', run: () => openLayouts(() => { applyFocusModes(); editor.setTypewriter(getState().typewriter); applyLayout() }) })
+  registerCommand({ id: 'edit-image', title: '图片尺寸与文字…', run: () => openMedia(documentTools, true), when: () => !!runtime.currentFile })
+  registerCommand({ id: 'edit-link', title: '链接文字与地址…', run: () => openMedia(documentTools, false), when: () => !!runtime.currentFile })
+  registerCommand({ id: 'insert-toc', title: '插入正文目录 [TOC]', run: async () => { const file=runtime.currentFile; if(!file)return; const text=editor.getContent(),sel=editor.sourceSelection(); await documentTools.edit(file,text,text.slice(0,sel.from)+'\n\n[TOC]\n\n'+text.slice(sel.to)) }, when: () => !!runtime.currentFile })
+  registerCommand({ id: 'edit-table', title: '表格行列与对齐…', run: () => openTable(documentTools), when: () => !!runtime.currentFile })
+  registerCommand({ id: 'daily-note', title: '打开今日笔记', run: () => openDaily(documentTools), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'daily-settings', title: '每日笔记设置…', run: () => openDaily(documentTools, true) })
+  registerCommand({ id: 'templates', title: '文档模板…', run: () => openTemplates(documentTools) })
+  registerCommand({ id: 'rename-tag', title: '标签批量改名…', run: () => openTagRename(documentTools), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'advanced-search', title: '书库搜索与替换…', run: () => openAdvancedSearch(documentTools), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'document-tools', title: '创作与知识工具…', run: openDocumentTools })
+  registerCommand({ id: 'document-properties', title: '文档属性…', run: () => openProperties(documentTools), when: () => !!runtime.currentFile })
+  registerCommand({ id: 'document-history', title: '文档历史与恢复…', run: () => openHistory(documentTools), when: () => !!runtime.currentFile })
   // 文件
   registerCommand({ id: 'open-file', title: '打开文件…', run: () => void openFileAction() })
   registerCommand({ id: 'open-folder', title: '打开文件夹…', run: () => void openFolderAction() })
@@ -838,7 +915,7 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'go-home', title: '回到首页', run: () => void goHomeUi(), when: () => tabs.count > 0 || !!runtime.currentFile })
   registerCommand({ id: 'quick-switch', title: '快速切换文件', run: () => openPaletteFor('files'), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'plugins', title: '插件中心…', run: () => openPluginCenter() })
-  registerCommand({ id: 'search', title: '在书库中搜索', run: () => openPaletteFor('search'), when: () => !!runtime.libraryRoot })
+  registerCommand({ id: 'search', title: '在书库中搜索', run: () => openAdvancedSearch(documentTools), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'export-pdf', title: '导出为 PDF…', run: () => void exportCurrent('pdf'), when: () => !!runtime.currentFile })
   registerCommand({ id: 'export-html', title: '导出为 HTML…', run: () => void exportCurrent('html'), when: () => !!runtime.currentFile })
   registerCommand({ id: 'insert-image', title: '插入图片…', run: () => void insertImageFrom(), when: () => !!runtime.currentFile })
@@ -869,6 +946,8 @@ function registerBuiltinCommands() {
 }
 
 function setupActions() {
+  for (const id of ['library-switch', 'empty-switch-library', 'home-switch-library']) $('#'+id).addEventListener('click', () => openLibraries(openLibrary, openFolderAction))
+  $('#btn-tools').addEventListener('click', openDocumentTools)
   // 工具栏与空状态按钮统一走命令分发
   $('#btn-open-folder').addEventListener('click', () => runCommand('open-folder'))
   $('#btn-open-file').addEventListener('click', () => runCommand('open-file'))
@@ -983,6 +1062,8 @@ function setupFsWatch() {
             previewScroll.scrollTop = scroll
           } catch { /* A later unlink event or activation handles a vanished file. */ }
         }
+        if (getState().sidebarTab === 'tags') await renderTags()
+        void refreshBacklinks(runtime.currentFile)
       }).catch(error => showDocumentError('文件变化处理失败', error))
     }, 300)
   })
@@ -1013,10 +1094,20 @@ function setupDragDrop() {
 
 async function boot() {
   setupPlatformUi()
+  setupTooltips()
   // 内置插件立即激活；外部插件通过沙箱声明注册。
   registerCalloutPlugin()
   void bootPlugins()
   setupPluginCenter()
+  let pluginRenderTimer: ReturnType<typeof setTimeout>
+  onPluginStateChange(() => {
+    clearTimeout(pluginRenderTimer)
+    // Wait for activation to settle before rendering newly registered hooks.
+    if (pluginSnapshot().some(plugin => plugin.state === 'activating')) return
+    pluginRenderTimer = setTimeout(() => {
+      if (runtime.currentFile) void renderPreview(previewScroll, preview, editor.getContent(), runtime.currentFile)
+    }, 50)
+  })
   applyTheme()
   applyFontScale(getState().fontScale)
   editor.mount(editorHost, currentTheme() === 'dark')
@@ -1205,6 +1296,7 @@ async function boot() {
 }
 
 window.addEventListener('beforeunload', () => {
+  if (runtime.libraryRoot) rememberLibrary(runtime.libraryRoot, { tabs: tabs.paths(), activeIndex: tabs.activeIndex, expanded: getState().expandedDirs })
   void editor.saveNow().catch(error => console.error('Save during close failed', error))
 })
 

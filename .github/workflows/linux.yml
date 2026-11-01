@@ -70,13 +70,25 @@ jobs:
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:doc-session-ui
 
+      - name: Verify knowledge tools with real IPC and local documents
+        timeout-minutes: 4
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:knowledge-ui
+
       - name: Verify plugin HTML preserves layout and interactions
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:plugin-dom-ui
 
+      - name: Verify plugin center lifecycle and failure recovery
+        timeout-minutes: 4
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:plugin-center-ui
+
       - name: Verify library selection and local image bug tickets in the real UI
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:bug-tickets-ui
+
+      - name: Verify button hints and keyboard descriptions
+        timeout-minutes: 2
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:tooltips-ui
 
       - name: Verify platform shortcuts and window chrome
         run: INKLEAF_UI_SUCCESS_MARKER='"passed":true' bash scripts/run-linux-ui.sh "verify/linux-${{ matrix.arch }}-platform-ui.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:platform-ui
@@ -110,6 +122,9 @@ jobs:
             verify/roundlinux-*
             verify/linux-*.log
             verify/linux-*-boot-ack.json
+            verify/plugin-center-*.png
+            verify/knowledge-*.png
+            verify/knowledge-export.pdf
 
   ubuntu24-x64:
     name: Ubuntu 24.04 x64 compatibility

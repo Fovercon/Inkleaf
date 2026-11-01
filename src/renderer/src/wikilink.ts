@@ -68,22 +68,28 @@ function dismissCard() {
   activeCard = null
 }
 
-registerPostProcessor((container) => {
+registerPostProcessor((container, ctx) => {
   const links = container.querySelectorAll<HTMLAnchorElement>('a[data-wikilink]')
   links.forEach((a) => {
     const target = a.dataset.wikilink ?? ''
     // resolve asynchronously; mark broken links once known
-    void window.mdr.indexResolve(target).then((path) => {
+    void window.mdr.indexResolve(target, ctx.filePath ?? undefined).then((path) => {
       if (path) a.dataset.wikilinkPath = path
       else a.classList.add('broken')
     })
 
-    a.addEventListener('click', (e) => {
+    a.addEventListener('click', async (e) => {
       e.preventDefault()
       e.stopPropagation()
       const path = a.dataset.wikilinkPath
       if (path) navHandler?.(path, a.dataset.wikilinkAnchor)
-      else void window.mdr.confirm({ title: '未找到文档', message: `书库中没有找到“${target}”`, okLabel: '知道了' })
+      else if (!target && ctx.filePath) navHandler?.(ctx.filePath, a.dataset.wikilinkAnchor)
+      else if (await window.mdr.confirm({ title: '创建链接文档', message: `尚未找到“${target}”。在当前书库中创建它？`, okLabel: '创建并打开' })) {
+        try {
+          const created=await window.mdr.createDocument(target, `# ${target.split('/').pop()}\n\n`, false, ctx.filePath ?? undefined)
+          navHandler?.(created, a.dataset.wikilinkAnchor)
+        } catch(error) { void window.mdr.confirm({title:'无法创建文档',message:String(error),okLabel:'知道了'}) }
+      }
     })
 
     a.addEventListener('mouseenter', () => {

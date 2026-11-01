@@ -1,4 +1,5 @@
 import MarkdownIt from 'markdown-it'
+import { writingMarkdown } from './writingMarkdown'
 import taskLists from 'markdown-it-task-lists'
 import katexPlugin from '@vscode/markdown-it-katex'
 import footnotePlugin from 'markdown-it-footnote'
@@ -59,6 +60,8 @@ registerMarkdownPlugin((md) => {
     }
   })
 })
+
+registerMarkdownPlugin(writingMarkdown)
 
 // preview task checkbox -> editor source line write-back
 let taskToggleHandler: ((line: number, checked: boolean) => void) | null = null

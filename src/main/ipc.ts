@@ -3,9 +3,11 @@ import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
 import chokidar from 'chokidar'
-import { CH, TreeNode, TextHit, ConfirmOptions, FsEvent, TagCount, Backlink } from '../shared/ipc'
+import { CH, TreeNode, ConfirmOptions, FsEvent, TagCount, Backlink } from '../shared/ipc'
 import * as indexService from './index-service'
 import { localAssets } from './local-assets'
+import { KnowledgeService } from './knowledge-service'
+import { DocumentHistory } from './document-history'
 
 export type { TreeNode } from '../shared/ipc'
 
@@ -17,6 +19,16 @@ let fileListRevision = 0
 let sessionWrites: Promise<void> = Promise.resolve()
 /** cached flat .md file list for the quick switcher; invalidated on fs events */
 let fileListCache: { root: string; generation: number; revision: number; files: string[] } | null = null
+let historyStore: DocumentHistory | null = null
+export const documentHistory = () => historyStore ??= new DocumentHistory(path.join(app.getPath('userData'), 'history'))
+
+async function libraryDocument(p: string): Promise<string> {
+  if (!libraryRoot || typeof p !== 'string' || !/\.(md|markdown|mdx)$/i.test(p)) throw new Error('请选择书库中的 Markdown 文档')
+  const root = await fs.realpath(libraryRoot), real = await fs.realpath(p)
+  const relative = path.relative(root, real)
+  if (!relative || relative.startsWith('..' + path.sep) || relative === '..' || path.isAbsolute(relative) || !(await fs.stat(real)).isFile()) throw new Error('文档不在当前书库内')
+  return p
+}
 
 export const getLibraryRoot = () => libraryRoot
 export const flushSessionWrites = () => sessionWrites.catch(() => {})
@@ -246,39 +258,24 @@ export function registerIpc() {
     return []
   }
 
+  const knowledge = new KnowledgeService(() => libraryRoot, () => String(libraryGeneration), () => listFiles(libraryRoot, true), documentHistory(), async file => {
+    await indexService.indexFile(file); broadcast(CH.fsEvent, { event: 'change', path: file })
+  })
+  ipcMain.handle(CH.tagPreview, (_e, from, to) => knowledge.tagPreview(from, to))
+  ipcMain.handle(CH.createDocument, (_e, relative, content, existing, from) => knowledge.create(relative, content, existing, from))
+  ipcMain.handle(CH.indexRelations, (_e, target) => indexService.queryRelations(target))
+  ipcMain.handle(CH.advancedSearch, (_e, options) => knowledge.search(options))
+  ipcMain.handle(CH.replacePreview, (_e, options, replacement) => knowledge.preview(options, replacement))
+  ipcMain.handle(CH.batchApply, (_e, id, paths) => knowledge.apply(id, paths))
   ipcMain.handle(CH.libListFiles, () => listFiles())
 
   ipcMain.handle(CH.searchText, async (_e, query: string, isRegex?: boolean) => {
-    const root = libraryRoot
-    if (!root || !query.trim()) return []
-    const ql = query.toLowerCase()
-    // '/'-prefixed palette queries arrive as regex; invalid patterns return no hits
-    let re: RegExp | null = null
-    if (isRegex) {
-      try {
-        re = new RegExp(query, 'i')
-      } catch {
-        return []
-      }
-    }
-    const files = await listFiles()
-    const results: TextHit[] = []
-    for (const f of files) {
-      if (results.length >= 300) break
-      try {
-        const lines = (await fs.readFile(f, 'utf8')).split('\n')
-        let count = 0
-        for (let i = 0; i < lines.length && count < 20; i++) {
-          if (re ? re.test(lines[i]) : lines[i].toLowerCase().includes(ql)) {
-            results.push({ path: f, line: i + 1, text: lines[i].trim().slice(0, 160) })
-            count++
-          }
-        }
-      } catch {
-        /* unreadable file — skip */
-      }
-    }
-    return results
+    if (!libraryRoot || !query.trim()) return []
+    try {
+      const report = await knowledge.search({ query, regex: isRegex })
+      const perFile = new Map<string, number>()
+      return report.matches.filter(hit => { const count = perFile.get(hit.path) ?? 0; perFile.set(hit.path, count + 1); return count < 20 }).slice(0, 300)
+    } catch { return [] } // Preserve the legacy quick-palette empty-result contract.
   })
 
   ipcMain.handle(CH.libClose, async () => {
@@ -303,11 +300,17 @@ export function registerIpc() {
   })
   ipcMain.handle(CH.imageResolve, (_e, source: string, documentPath: string) => localAssets.resolveImage(source, documentPath))
 
-  ipcMain.handle(CH.fsWrite, async (_e, p: string, content: string) => {
-    const tmp = p + '.mdr-tmp'
-    await fs.writeFile(tmp, content, 'utf8')
-    await fs.rename(tmp, p)
+  ipcMain.handle(CH.fsWrite, (_e, p: string, content: string) => documentHistory().write(p, content))
+  ipcMain.handle(CH.historyList, async (_e, p: string) => documentHistory().list(await libraryDocument(p)))
+  ipcMain.handle(CH.historyVersion, async (_e, p: string, id: string) => documentHistory().version(await libraryDocument(p), id))
+  ipcMain.handle(CH.historyCapture, async (_e, p: string) => documentHistory().capture(await libraryDocument(p)))
+  ipcMain.handle(CH.historyRestore, async (_e, p: string, id: string, expected: string) => {
+    const value = await documentHistory().restore(await libraryDocument(p), id, expected)
+    await indexService.indexFile(p)
+    broadcast(CH.fsEvent, { event: 'change', path: p })
+    return value
   })
+  ipcMain.handle(CH.historyLimit, (_e, limit: number) => documentHistory().setLimit(limit))
 
   // used for pasted images; creates parent directories as needed
   ipcMain.handle(CH.fsWriteBinary, async (_e, p: string, base64: string) => {
@@ -318,6 +321,7 @@ export function registerIpc() {
   ipcMain.handle(CH.fsRename, async (_e, oldPath: string, newPath: string) => {
     if (fsSync.existsSync(newPath)) return { ok: false, error: '同名文件已存在' }
     try {
+      await documentHistory().relocate(oldPath, newPath)
       await fs.rename(oldPath, newPath)
       return { ok: true }
     } catch (err) {
@@ -412,7 +416,7 @@ export function registerIpc() {
 
   ipcMain.handle(CH.indexTags, (): TagCount[] => indexService.queryTags())
   ipcMain.handle(CH.indexBacklinks, (_e, name: string): Backlink[] => indexService.queryBacklinks(name))
-  ipcMain.handle(CH.indexResolve, (_e, name: string): string | null => indexService.resolveName(name))
+  ipcMain.handle(CH.indexResolve, (_e, name: string, from?: string): string | null => indexService.resolveName(name, from))
   ipcMain.handle(CH.indexPeek, (_e, p: string): Promise<{ title: string; excerpt: string } | null> =>
     indexService.peekDoc(p))
   ipcMain.handle(CH.indexFilesByTag, (_e, tag: string): string[] => indexService.queryFilesByTag(tag))

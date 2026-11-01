@@ -23,7 +23,7 @@ try {
     .split('\0').filter(Boolean)
   const errors = []
   for (const filename of tracked) {
-    if (internalFiles.has(filename) || internalDirectories.some(directory =>
+    if (internalFiles.has(filename) || /^docs\/\d{2}-.+\.md$/.test(filename) || internalDirectories.some(directory =>
       filename === directory.slice(0, -1) || filename.startsWith(directory))) {
       errors.push(`Internal development material is tracked: ${filename}`)
     }

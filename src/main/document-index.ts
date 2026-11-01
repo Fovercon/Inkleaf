@@ -2,8 +2,9 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import matter from 'gray-matter'
+import { proseMask } from '../shared/markdown-tools'
 
-export interface IndexLink { target: string; line: number }
+export interface IndexLink { target: string; line: number; context?: string }
 export interface DocIndexEntry {
   path: string; title: string; mtime: number; size: number; sha256: string
   tags: string[]; links: IndexLink[]; frontmatter: Record<string, unknown>
@@ -17,9 +18,9 @@ const wikilink = /\[\[([^\]|#]+?)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/g
 // Inline tags must start with a letter and must not be markdown link targets,
 // so issue references (#1720) and heading anchors (#1-设计) stay out of the index.
 const bodyTag = /(?<!\])(?:^|[\s(])#(\p{L}[\p{L}\p{N}_/-]*)/gu
-const indexFormat = 3
+const indexFormat = 4
 const hash = (text: string) => createHash('sha256').update(text).digest('hex')
-const within = (root: string, p: string) => path.resolve(p).startsWith(path.resolve(root) + path.sep)
+const within = (root: string, p: string) => { const rel = path.relative(path.resolve(root), path.resolve(p)); return !!rel && rel !== '..' && !rel.startsWith('..' + path.sep) && !path.isAbsolute(rel) }
 
 /** Documents are data: only YAML and JSON frontmatter are accepted. */
 export function parseFrontmatter(raw: string): { data: Record<string, unknown>; content: string } {
@@ -43,13 +44,13 @@ function parseDoc(p: string, raw: string, mtime: number, size: number): DocIndex
   const { data, content } = parseFrontmatter(raw), tags = new Set<string>()
   if (typeof data.tags === 'string') data.tags.split(/[，,\s]+/).filter(Boolean).forEach(t => tags.add(t))
   else if (Array.isArray(data.tags)) data.tags.forEach(t => { if (typeof t === 'string' && t.trim()) tags.add(t.trim()) })
-  for (const match of content.matchAll(bodyTag)) tags.add(match[1])
+  for (const match of proseMask(raw).matchAll(bodyTag)) tags.add(match[1])
   const links: IndexLink[] = []
-  const offset = raw === content ? 0 : raw.slice(0, raw.length - content.length).split('\n').length - 1
-  content.split('\n').forEach((line, i) => {
-    for (const match of line.matchAll(wikilink)) links.push({ target: match[1].trim(), line: offset + i + 1 })
+  const originalLines=raw.split('\n')
+  proseMask(raw,false).split('\n').forEach((line,i)=> {
+    for(const match of line.matchAll(wikilink)) links.push({target:match[1].trim(),line:i+1,context:originalLines.slice(Math.max(0,i-1),i+2).join('\n').slice(0,500)})
   })
-  return { path: p, title: /^#\s+(.+)$/m.exec(content)?.[1]?.trim() || basename(p), mtime, size,
+  return { path: p, title: typeof data.title === 'string' && data.title.trim() || /^#\s+(.+)$/m.exec(content)?.[1]?.trim() || basename(p), mtime, size,
     sha256: hash(raw), tags: [...tags], links, frontmatter: data }
 }
 
@@ -169,7 +170,13 @@ export class DocumentIndex {
     await this.writes
   }
 
-  resolve(name: string): string | null {
+  resolve(name: string, from?: string): string | null {
+    if(this.entries.has(name)) return name
+    if(from && this.root && within(this.root,from)) {
+      const relative=name.trim().replace(extension,'')
+      const local=path.resolve(path.dirname(from),relative)
+      for(const entry of this.entries.values()) if(entry.path.replace(extension,'')===local) return entry.path
+    }
     const requested = name.trim().replace(/\\/g, '/').replace(/^\/+/, '').replace(extension, '')
     if (!requested) return null
     if (requested.includes('/')) {
@@ -187,7 +194,11 @@ export class DocumentIndex {
 
   tags(): TagCount[] {
     const counts = new Map<string, number>()
-    for (const entry of this.entries.values()) for (const tag of entry.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    for (const entry of this.entries.values()) {
+      const parents=new Set<string>()
+      for(const tag of entry.tags) { const parts=tag.split('/'); for(let i=1;i<=parts.length;i++) parents.add(parts.slice(0,i).join('/')) }
+      for(const tag of parents) counts.set(tag,(counts.get(tag)??0)+1)
+    }
     return [...counts].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, 'zh-Hans-CN'))
   }
 
@@ -196,9 +207,25 @@ export class DocumentIndex {
     if (!target) return []
     const out: Backlink[] = []
     for (const entry of this.entries.values()) for (const link of entry.links) {
-      if (this.resolve(link.target) === target) out.push({ path: entry.path, line: link.line })
+      if (this.resolve(link.target, entry.path) === target) out.push({ path: entry.path, line: link.line })
     }
     return out
+  }
+
+  async relations(target: string): Promise<{ backlinks: (Backlink & { context: string })[]; mentions: (Backlink & { context: string })[] }> {
+    const generation=this.generation, entry=this.entries.get(target)
+    if(!entry) return {backlinks:[],mentions:[]}
+    const backlinks=this.backlinks(target).map(link=>({...link,context:this.entries.get(link.path)?.links.find(l=>l.line===link.line)?.context??''}))
+    const names=[...new Set([basename(target),entry.title].filter(Boolean))], mentions: (Backlink & {context:string})[]=[]
+    for(const doc of this.entries.values()) {
+      if(doc.path===target) continue
+      const loaded=await this.readDocument(doc.path)
+      if(generation!==this.generation) return {backlinks:[],mentions:[]}
+      if(!loaded) continue
+      const lines=loaded.raw.split('\n')
+      proseMask(loaded.raw).split('\n').forEach((line,i)=>{ if(names.some(n=>line.includes(n))) mentions.push({path:doc.path,line:i+1,context:lines.slice(Math.max(0,i-1),i+2).join('\n').slice(0,500)}) })
+    }
+    return {backlinks,mentions}
   }
 
   names(): { name: string; path: string }[] {
@@ -210,7 +237,7 @@ export class DocumentIndex {
   }
 
   filesByTag(tag: string): string[] {
-    return [...this.entries.values()].filter(entry => entry.tags.includes(tag)).map(entry => entry.path).sort()
+    return [...this.entries.values()].filter(entry => entry.tags.some(t=>t===tag || t.startsWith(tag+'/'))).map(entry => entry.path).sort()
   }
 
   async peek(p: string, maxChars = 240): Promise<{ title: string; excerpt: string } | null> {

@@ -810,13 +810,11 @@ async function createWindow() {
                 callout.querySelector('[data-action="toggle"]')?.click();
                 await new Promise(r => setTimeout(r, 300));
                 toggled = stateOf(findCard('bundled.callout')).includes('已停用');
-                document.dispatchEvent(new CustomEvent('mdr-test-rerender'));
                 await new Promise(r => setTimeout(r, 900));
                 calloutGone = document.querySelectorAll('#preview blockquote.md-callout').length === 0;
                 findCard('bundled.callout')?.querySelector('[data-action="toggle"]')?.click();
                 await new Promise(r => setTimeout(r, 500));
                 reenabled = stateOf(findCard('bundled.callout')).includes('运行中');
-                document.dispatchEvent(new CustomEvent('mdr-test-rerender'));
                 await new Promise(r => setTimeout(r, 900));
                 calloutBack = document.querySelectorAll('#preview blockquote.md-callout').length >= 1;
               }

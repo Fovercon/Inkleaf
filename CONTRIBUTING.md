@@ -61,7 +61,9 @@ npm run test:platform
 ```bash
 npm run test:doc-session-ui
 npm run test:plugin-dom-ui
+npm run test:plugin-center-ui
 npm run test:bug-tickets-ui
+npm run test:knowledge-ui
 npm run test:ui
 ```
 
