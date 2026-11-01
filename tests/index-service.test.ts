@@ -202,3 +202,17 @@ test('files and symlinks outside the library cannot be indexed or peeked', async
   assert.equal(index.resolve('Outside'), null); assert.equal(index.resolve('Link'), null)
   assert.equal(await index.peek(outside), null); assert.equal(await index.peek(link), null)
 })
+
+test('nested tags count unique documents; references resolve relative to source; mentions exclude links and code', async t => {
+  const { index, write } = await fixture(t)
+  const target=await write('a/Target.md','---\ntitle: 墨页\n---\n# Target\n#project/one #project/two\n')
+  const duplicate=await write('b/Target.md','# Target\n')
+  const ref=await write('a/Ref.md','[[Target]]\n墨页 is mentioned\n`墨页`\n[墨页](url)\nhttps://a/墨页\n')
+  const other=await write('b/Ref.md','[[Target]]\n')
+  await index.build(path.dirname(path.dirname(target)),[target,duplicate,ref,other])
+  assert.equal(index.tags().find(t=>t.tag==='project')?.count,1)
+  assert.deepEqual(index.filesByTag('project'),[target])
+  const relation=await index.relations(target)
+  assert.deepEqual(relation.backlinks.map(l=>l.path),[ref]); assert.match(relation.backlinks[0].context,/Target/)
+  assert.deepEqual(relation.mentions.filter(l=>l.path===ref).map(l=>l.line),[2])
+})

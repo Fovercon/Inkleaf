@@ -1,0 +1,20 @@
+{
+  "id": "inkleaf.reading-time",
+  "name": "阅读时间",
+  "version": "1.0.0",
+  "main": "main.mjs",
+  "permissions": [
+    "render"
+  ],
+  "author": "Inkleaf",
+  "category": "阅读",
+  "description": "在预览顶部显示字数和预计阅读时间。",
+  "usage": "启用后自动显示在文档预览顶部，按每分钟 400 字估算。无需修改 Markdown。",
+  "minAppVersion": "0.5.1",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "notes": "首次发布。仅处理文档预览，不读写原文。"
+    }
+  ]
+}

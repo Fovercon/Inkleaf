@@ -10,10 +10,12 @@ export const buildIndex = (root: string, files: string[]) => service().build(roo
 export const clearIndex = () => service().clear()
 export const indexFile = (p: string) => service().update(p)
 export const unindexPath = (p: string) => service().remove(p)
-export const resolveName = (name: string) => service().resolve(name)
+export const resolveName = (name: string, from?: string) => service().resolve(name, from)
 export const queryTags = () => service().tags()
 export const queryBacklinks = (name: string) => service().backlinks(name)
 export const loadPersistedIndex = (root: string, files: string[]) => service().load(root, files)
 export const listNames = () => service().names()
 export const queryFilesByTag = (tag: string) => service().filesByTag(tag)
 export const peekDoc = (p: string, maxChars = 240) => service().peek(p, maxChars)
+
+export const queryRelations = (target: string) => service().relations(target)

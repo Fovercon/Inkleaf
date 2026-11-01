@@ -257,3 +257,14 @@ test('closing a library durably clears its root and document paths together', as
   assert.equal(stored.libraryRoot, null); assert.equal(stored.lastFile, null)
   assert.deepEqual(stored.tabs, []); assert.equal(stored.activeIndex, -1)
 })
+
+test('saving through the existing document IPC retains the previous file contents as durable history', async t => {
+  const { api, invoke, root, a, profile } = await fixture(t)
+  await invoke(api.CH.libOpen, root)
+  const before = await fs.readFile(a, 'utf8')
+  await invoke(api.CH.fsWrite, a, '# Changed\n')
+  const directory = path.join(profile, 'history')
+  const files = await fs.readdir(directory).catch(() => [] as string[])
+  const histories = await Promise.all(files.filter(f => f.endsWith('.json')).map(f => fs.readFile(path.join(directory, f), 'utf8')))
+  assert(histories.some(raw => JSON.parse(raw).entries?.some((entry: any) => entry.content === before)), 'The prior document must be recoverable after its replacement')
+})

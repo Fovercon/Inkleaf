@@ -91,6 +91,8 @@ jobs:
       - run: npm run test:regressions
       - run: npm run test:doc-session-ui
       - run: npm run test:plugin-dom-ui
+      - run: npm run test:plugin-center-ui
+      - run: npm run test:tooltips-ui
       - run: npm run test:bug-tickets-ui
       - run: npm run release:build -- --arch arm64
       - run: npm run test:ui-failure

@@ -41,13 +41,14 @@
     </div>
     <span class="tb-sep"></span>
     <div class="toolbar-group">
-      <button id="btn-toggle-sidebar" title="书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="显示书库栏" class="tb"><svg class="icon"><use href="#i-sidebar"/></svg></button>
-      <button id="btn-toggle-editor" title="编辑面板 (⌘1)" data-shortcut="CmdOrCtrl+1" aria-label="显示编辑面板" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
-      <button id="btn-toggle-preview" title="阅读面板 (⌘2)" data-shortcut="CmdOrCtrl+2" aria-label="显示阅读面板" class="tb"><svg class="icon"><use href="#i-book"/></svg></button>
-      <button id="btn-toggle-outline" title="大纲 (⌘3)" data-shortcut="CmdOrCtrl+3" aria-label="显示大纲" class="tb"><svg class="icon"><use href="#i-outline"/></svg></button>
+      <button id="btn-toggle-sidebar" title="书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="切换书库栏" class="tb"><svg class="icon"><use href="#i-sidebar"/></svg></button>
+      <button id="btn-toggle-editor" title="编辑面板 (⌘1)" data-shortcut="CmdOrCtrl+1" aria-label="切换编辑面板" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
+      <button id="btn-toggle-preview" title="阅读面板 (⌘2)" data-shortcut="CmdOrCtrl+2" aria-label="切换阅读面板" class="tb"><svg class="icon"><use href="#i-book"/></svg></button>
+      <button id="btn-toggle-outline" title="大纲 (⌘3)" data-shortcut="CmdOrCtrl+3" aria-label="切换文档大纲" class="tb"><svg class="icon"><use href="#i-outline"/></svg></button>
     </div>
     <span class="tb-sep"></span>
     <button id="btn-theme" title="切换主题：跟随系统 / 暖白 / 羊皮纸 / 护眼绿 / 深色" aria-label="切换主题" class="tb"><svg class="icon"><use href="#i-theme"/></svg></button>
+    <button id="btn-tools" title="创作与知识工具" aria-label="创作与知识工具" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
     <button id="btn-plugins" title="插件中心" aria-label="插件中心" class="tb"><svg class="icon"><use href="#i-plugins"/></svg></button>
     <button id="btn-updates" title="检查更新" aria-label="检查软件更新" class="tb"><svg class="icon"><use href="#i-update"/></svg></button>
   </div>
@@ -56,7 +57,7 @@
 <div id="workspace">
   <button id="sidebar-expand" title="展开书库栏 (⌘\)" data-shortcut="CmdOrCtrl+\" aria-label="展开书库栏"><svg class="icon"><use href="#i-right"/></svg></button>
   <aside id="sidebar" aria-label="书库">
-    <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span><span id="library-count" hidden></span></div>
+    <div id="library-title"><svg class="icon lib-icon" aria-hidden="true"><use href="#i-folder"/></svg><span id="library-name">我的书库</span><span id="library-count" hidden></span><button id="library-switch" class="tb" title="切换书库" aria-label="切换书库">⇄</button></div>
     <div class="sidebar-tabs" role="group" aria-label="书库视图">
       <button id="tab-files" class="stab active">全部文件</button>
       <button id="tab-recent" class="stab">最近打开</button>
@@ -77,7 +78,8 @@
         <p id="library-empty-description">从左侧选择一篇文档，或新建一页，记录此刻的想法。</p>
         <div class="empty-actions">
           <button id="library-new-file" class="primary"><svg class="icon"><use href="#i-plus"/></svg>新建一页</button>
-          <button id="library-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件</button>
+          <button id="home-switch-library" class="empty-button">最近书库</button>
+        <button id="library-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件</button>
         </div>
         <div class="home-recent-block" id="home-recent-block" hidden>
           <div class="home-recent-label">最近打开</div>
@@ -118,7 +120,8 @@
     <p class="empty-description">收藏一份灵感，展开一页思绪。<br>从你的 Markdown 文件或书库开始。</p>
     <div class="empty-actions">
       <button id="empty-open-folder" class="primary"><svg class="icon"><use href="#i-folder"/></svg>打开书库<kbd data-shortcut="CmdOrCtrl+Shift+O">⇧⌘O</kbd></button>
-      <button id="empty-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件<kbd data-shortcut="CmdOrCtrl+O">⌘O</kbd></button>
+      <button id="empty-switch-library" class="empty-button">最近书库</button>
+        <button id="empty-open-file"><svg class="icon"><use href="#i-file"/></svg>打开文件<kbd data-shortcut="CmdOrCtrl+O">⌘O</kbd></button>
     </div>
     <p class="empty-hint">也可以将文件夹或 .md 文件拖到这里</p>
     <div class="empty-rule"></div>
@@ -131,13 +134,34 @@
   <span id="editor-stats"></span>
   <span class="status-shortcut">快速切换 <kbd data-shortcut="CmdOrCtrl+P">⌘P</kbd></span>
 </footer>
-<div id="pc-overlay" role="dialog" aria-modal="true" aria-label="插件中心">
+<div id="pc-overlay" role="dialog" aria-modal="true" aria-label="插件中心" aria-describedby="pc-hint">
   <div class="pc-dialog">
-    <div class="pc-top"><span class="pc-heading">插件中心</span><button class="pc-close" aria-label="关闭">✕</button></div>
-    <div id="pc-list"></div>
+    <div class="pc-top"><span class="pc-heading">插件中心</span><button class="pc-close" aria-label="关闭插件中心">✕</button></div>
+    <p id="pc-hint" class="pc-subtitle">让工具顺应你的写作习惯。</p>
+    <div class="pc-workspace">
+      <aside class="pc-sidebar">
+        <nav aria-label="插件导航">
+          <button data-view="installed" class="pc-nav selected" aria-pressed="true">已安装 <span id="pc-count-installed"></span></button>
+          <button data-view="discover" class="pc-nav" aria-pressed="false">发现插件 <span id="pc-count-discover"></span></button>
+          <button data-view="updates" class="pc-nav" aria-pressed="false">可用更新 <span id="pc-count-updates"></span></button>
+        </nav>
+        <p class="pc-sidebar-note">按需启用，专注文字。<br>内置插件随墨页更新。</p>
+      </aside>
+      <section class="pc-browser" aria-label="插件列表">
+        <div class="pc-searchbar">
+          <input id="pc-search" type="search" placeholder="搜索名称、说明或作者" aria-label="搜索插件">
+          <select id="pc-category" aria-label="插件分类"><option value="">全部分类</option></select>
+        </div>
+        <div id="pc-summary"></div>
+        <div id="pc-list" aria-busy="false"></div>
+      </section>
+      <section id="pc-detail" aria-label="插件详情"></section>
+    </div>
+    <div id="pc-status" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="pc-footer">
       <button id="pc-reveal" class="pc-btn">打开插件文件夹</button>
       <button id="pc-install" class="pc-btn primary">从文件夹安装…</button>
+      <button id="pc-check-updates" class="pc-btn">检查更新</button>
       <button id="pc-refresh" class="pc-btn">刷新</button>
     </div>
   </div>

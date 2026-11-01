@@ -1,4 +1,5 @@
 /** Bundled code is trusted; external plugins run in opaque sandboxed iframes. */
+import type { PluginDetails } from '../../shared/plugins'
 import { registerCommand, unregisterCommand, getCommand, type CommandDef } from './commands'
 import {
   registerMarkdownPlugin, registerPostProcessor, registerCodeBlockProcessor,
@@ -22,8 +23,26 @@ interface PluginRecord {
 }
 const records = new Map<string, PluginRecord>()
 const bundledActivators = new Map<string, (ink: InkApi) => Promise<void> | void>()
+const PREFERENCES_KEY = 'inkleaf:plugin-preferences:v1'
+function readPreferences(): Map<string, boolean> {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(PREFERENCES_KEY) ?? '{}')
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return new Map()
+    return new Map(Object.entries(value).filter((entry): entry is [string, boolean] =>
+      /^[a-z0-9][a-z0-9._-]{0,127}$/.test(entry[0]) && typeof entry[1] === 'boolean'))
+  } catch { return new Map() }
+}
+let preferences = readPreferences()
+function remember(id: string, enabled?: boolean) {
+  const next = new Map(preferences)
+  if (enabled === undefined) next.delete(id)
+  else next.set(id, enabled)
+  try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify(Object.fromEntries(next))) }
+  catch { throw new Error('无法保存插件设置，请检查磁盘空间后重试') }
+  preferences = next
+}
 
-export interface PluginSnapshot {
+export interface PluginSnapshot extends PluginDetails {
   id: string
   name: string
   version: string
@@ -48,6 +67,7 @@ export function pluginSnapshot(): PluginSnapshot[] {
     permissions: Array.isArray(rec.manifest.permissions) ? rec.manifest.permissions.map(String) : [],
     commands: ((rec.manifest.contributes as { commands?: Array<{ id: string; title: string }> } | undefined)?.commands ?? []).map((c) => ({ id: c.id, title: c.title })),
     message: rec.message,
+    ...Object.fromEntries(['author', 'category', 'usage', 'examples', 'changelog', 'minAppVersion'].filter(key => rec.manifest[key] !== undefined).map(key => [key, rec.manifest[key]])),
   }))
 }
 export function onPluginStateChange(cb: () => void): () => void {
@@ -143,14 +163,14 @@ declare global {
       version: string
       activate: (id: string) => Promise<boolean>
       disable: (id: string) => void
-      enable: (id: string) => void
+      enable: (id: string) => Promise<boolean>
       list: () => { id: string; state: string }[]
     }
   }
 }
 function record(id: string, manifest: Record<string, unknown>, bundled: boolean, mainUrl?: string): PluginRecord {
   if (records.has(id)) throw new Error(`插件 ID 已注册：${id}`)
-  const rec: PluginRecord = { id, manifest, bundled, mainUrl, state: 'registered', epoch: 0, deactivators: [], declarations: new Map() }
+  const rec: PluginRecord = { id, manifest, bundled, mainUrl, state: preferences.get(id) === false ? 'disabled' : 'registered', epoch: 0, deactivators: [], declarations: new Map() }
   records.set(id, rec)
   return rec
 }
@@ -186,8 +206,10 @@ async function activatePlugin(id: string): Promise<boolean> {
   if (rec.state === 'active') return true
   if (rec.activation) return rec.activation
   rec.state = 'activating'
+  rec.message = undefined
   const epoch = ++rec.epoch
-  const activation = (async () => {
+  const activation = Promise.resolve().then(async () => {
+    if (!live(rec, epoch)) return false
     try {
       if (rec.bundled) {
         const activate = bundledActivators.get(id)
@@ -209,8 +231,9 @@ async function activatePlugin(id: string): Promise<boolean> {
       if (live(rec, epoch)) fail(rec, err)
       return false
     }
-  })()
+  })
   rec.activation = activation
+  notify()
   try { return await activation }
   finally { if (rec.activation === activation) rec.activation = undefined }
 }
@@ -219,6 +242,7 @@ function deactivatePlugin(id: string) {
   if (!rec) return
   rec.epoch++
   rec.state = 'disabled'
+  rec.message = undefined
   rec.activation = undefined
   cleanup(rec)
   notify()
@@ -227,9 +251,17 @@ export function registerBundledPlugin(id: string, manifest: Record<string, unkno
   record(id, manifest, true)
   bundledActivators.set(id, activate)
 }
-export async function discoverExternalPlugins() {
-  const list = await window.mdr.pluginsList().catch(() => null)
-  if (!list) return
+let discovery: Promise<void> | undefined
+export async function discoverExternalPlugins(): Promise<void> {
+  if (discovery) return discovery
+  const pending = discover()
+  discovery = pending
+  try { await pending } finally { if (discovery === pending) discovery = undefined }
+}
+async function discover() {
+  // A failed scan must not be mistaken for an empty plugin directory.
+  const list = await window.mdr.pluginsList()
+  if (new Set(list.map(p => p.id)).size !== list.length) throw new Error('发现重复的插件 ID，请检查插件文件夹')
   const present = new Set(list.map((plugin) => plugin.id))
   for (const [id, rec] of records) {
     if (!rec.bundled && !present.has(id)) {
@@ -237,22 +269,29 @@ export async function discoverExternalPlugins() {
       records.delete(id)
     }
   }
+  const restart: string[] = []
   for (const p of list) {
     if (p.id.startsWith('bundled.')) continue
     const old = records.get(p.id)
     if (old) {
       if (!old.bundled && (old.mainUrl !== p.mainUrl || JSON.stringify(old.manifest) !== JSON.stringify(p.manifest))) {
         const disabled = old.state === 'disabled'
+        const running = old.state === 'active' || old.state === 'activating'
         deactivatePlugin(p.id)
         old.manifest = p.manifest ?? {}
         old.mainUrl = p.mainUrl
         old.state = disabled ? 'disabled' : 'registered'
+        if (running) restart.push(p.id)
       }
       continue
     }
     record(p.id, p.manifest ?? {}, false, p.mainUrl)
   }
+  for (const rec of records.values()) {
+    if (!rec.bundled) { try { injectDeclarations(rec) } catch (err) { fail(rec, err) } }
+  }
   notify()
+  for (const id of restart) await activatePlugin(id)
 }
 function injectDeclarations(rec: PluginRecord) {
   if (rec.state !== 'registered') return
@@ -272,23 +311,56 @@ function injectDeclarations(rec: PluginRecord) {
 }
 export function initPluginRuntime() {
   window.ink = {
-    version: '0.4.0', activate: activatePlugin, disable: deactivatePlugin,
-    enable(id) {
+    version: '0.4.0', activate: activatePlugin,
+    disable(id) {
+      if (!records.has(id)) return
+      remember(id, false)
+      deactivatePlugin(id)
+    },
+    async enable(id) {
       const rec = records.get(id)
-      if (rec?.state === 'disabled') {
+      if (!rec) return false
+      remember(id, true)
+      if (rec.state === 'disabled' || rec.state === 'error') {
         rec.state = 'registered'
-        try { if (!rec.bundled) injectDeclarations(rec) } catch (err) { fail(rec, err); return }
-        void activatePlugin(id)
+        rec.activation = undefined
       }
+      try { if (!rec.bundled) injectDeclarations(rec) } catch (err) { fail(rec, err); return false }
+      return activatePlugin(id)
     },
     list: () => [...records.values()].map(({ id, state }) => ({ id, state })),
   }
 }
+/** Reload is temporary; it must not overwrite the user's enable/disable choice. */
+export async function reloadPlugin(id: string): Promise<boolean> {
+  const previousEpoch = records.get(id)?.epoch
+  await discoverExternalPlugins()
+  const rec = records.get(id)
+  if (!rec || rec.bundled) throw new Error('找不到可重新加载的外部插件')
+  // Discovery already replaces a running instance when its manifest changes.
+  if (rec.epoch !== previousEpoch && (rec.state === 'active' || rec.state === 'error')) return rec.state === 'active'
+  const disabled = rec.state === 'disabled'
+  deactivatePlugin(id)
+  if (disabled) return true
+  rec.state = 'registered'
+  try { injectDeclarations(rec) } catch (err) { fail(rec, err); return false }
+  return activatePlugin(id)
+}
+/** Leave the running instance intact if moving the installed folder to trash fails. */
+export async function uninstallPlugin(id: string): Promise<void> {
+  const rec = records.get(id)
+  if (!rec || rec.bundled) throw new Error('找不到可卸载的外部插件')
+  const result = await window.mdr.pluginsUninstall(id)
+  if (!result.ok) throw new Error(result.error ?? '卸载失败')
+  deactivatePlugin(id)
+  records.delete(id)
+  notify()
+  try { remember(id) } catch { throw new Error('插件已卸载，但未能清除启停设置，请检查磁盘空间') }
+}
 export async function bootPlugins() {
   initPluginRuntime()
-  await discoverExternalPlugins()
+  try { await discoverExternalPlugins() } catch (err) { console.error('[plugin] 扫描失败', err) }
   for (const rec of records.values()) {
-    if (rec.bundled) await activatePlugin(rec.id)
-    else { try { injectDeclarations(rec) } catch (err) { fail(rec, err) } }
+    if (rec.state === 'registered' && (rec.bundled || preferences.get(rec.id) === true)) await activatePlugin(rec.id)
   }
 }
