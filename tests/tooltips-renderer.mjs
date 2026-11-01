@@ -51,7 +51,7 @@ app.whenReady().then(async()=>{
  checks.push('panel hints track live state')
  await js('document.getElementById("btn-updates").focus()');await pause(200)
  await js('document.getElementById("btn-updates").title="新版本已就绪，点击安装"');await pause(50)
- assert((await hint())==='新版本已就绪，点击安装','Live update title was stale: '+JSON.stringify(await js('({hint:document.getElementById(\"ink-button-tooltip\").textContent,open:document.getElementById(\"ink-button-tooltip\").matches(\":popover-open\"),active:document.activeElement.id,title:document.getElementById(\"btn-updates\").getAttribute(\"title\")})'))) 
+ assert((await hint())==='新版本已就绪，点击安装','Live update title was stale: '+JSON.stringify(await js('({hint:document.getElementById(\"ink-button-tooltip\").textContent,open:document.getElementById(\"ink-button-tooltip\").matches(\":popover-open\"),active:document.activeElement.id,title:document.getElementById(\"btn-updates\").getAttribute(\"title\")})')))
  await js('document.getElementById("btn-updates").click()');assert((await hint())===null,'Click left a tooltip open')
  assert(await js('document.getElementById("btn-updates").title.includes("新版本已就绪")'),'Latest native title not restored')
  checks.push('update status and click dismissal preserve current titles')
