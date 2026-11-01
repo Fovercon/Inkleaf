@@ -81,7 +81,7 @@ app.whenReady().then(async()=>{
  await pause(200)
  assert((await hint())==='动态按钮：复制写法','Dynamic dialog hint missing: '+JSON.stringify(await js('({text:document.getElementById(\"ink-button-tooltip\").textContent,active:document.activeElement.id,open:document.getElementById(\"ink-button-tooltip\").matches(\":popover-open\"),parent:document.getElementById(\"ink-button-tooltip\").parentElement.tagName,title:document.getElementById(\"dynamic-action\").getAttribute(\"title\")})')))
  assert(await js('document.getElementById("hint-dialog").contains(document.getElementById("ink-button-tooltip"))&&document.getElementById("dynamic-action").getAttribute("aria-describedby").includes("existing-help")'),'Modal top layer or existing ARIA description lost')
- await js('document.getElementById("hint-dialog").remove()');await pause(50)
+ await js('document.getElementById("dynamic-action").blur();document.getElementById("hint-dialog").remove()');await pause(50)
  assert((await hint())===null,'Detached target left a stale tooltip')
  checks.push('dynamic modal buttons keep ARIA descriptions and clean up on removal')
  // Pointer must leave the prior toolbar control before returning.
