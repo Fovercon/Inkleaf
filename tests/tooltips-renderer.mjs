@@ -27,7 +27,14 @@ app.whenReady().then(async()=>{
  const timer=setTimeout(()=>{console.error('TOOLTIPS_UI timed out');finish(1)},30000)
  const win=new BrowserWindow({width:1180,height:820,show:false,webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false,backgroundThrottling:false}})
  await win.loadFile(process.argv[2]);win.webContents.debugger.attach('1.3');await win.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled',{enabled:true})
- const js=code=>win.webContents.executeJavaScript(code)
+ win.webContents.on('console-message',(_event,_level,message)=>console.log('TOOLTIP_RENDERER',message))
+ const js=async code=>{
+   try{return await win.webContents.executeJavaScript(code)}
+   catch(error){
+     const state=await win.webContents.executeJavaScript('JSON.stringify({ready:window.hintsReady,active:document.activeElement?.id,tooltip:document.getElementById("ink-button-tooltip")?.textContent,open:document.getElementById("ink-button-tooltip")?.matches(":popover-open")})').catch(()=>'<page unavailable>')
+     throw Error(String(error)+'; expression='+code+'; state='+state)
+   }
+ }
  await js('(async()=>{while(!window.hintsReady)await new Promise(r=>setTimeout(r,10))})()')
  const pause=ms=>new Promise(r=>setTimeout(r,ms))
  const assert=(v,m)=>{if(!v)throw Error(m)}

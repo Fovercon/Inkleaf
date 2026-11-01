@@ -55,6 +55,10 @@ jobs:
           npm run test:platform
           npm run test:regressions
 
+      - name: Verify button hints and keyboard descriptions
+        timeout-minutes: 2
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:tooltips-ui
+
       - name: Exercise real Electron UI under Xvfb with sandbox enabled
         timeout-minutes: 5
         shell: bash
@@ -85,10 +89,6 @@ jobs:
       - name: Verify library selection and local image bug tickets in the real UI
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:bug-tickets-ui
-
-      - name: Verify button hints and keyboard descriptions
-        timeout-minutes: 2
-        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:tooltips-ui
 
       - name: Verify platform shortcuts and window chrome
         run: INKLEAF_UI_SUCCESS_MARKER='"passed":true' bash scripts/run-linux-ui.sh "verify/linux-${{ matrix.arch }}-platform-ui.log" dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:platform-ui
