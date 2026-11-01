@@ -1,4 +1,5 @@
 /** Bundled code is trusted; external plugins run in opaque sandboxed iframes. */
+import type { PluginDetails } from '../../shared/plugins'
 import { registerCommand, unregisterCommand, getCommand, type CommandDef } from './commands'
 import {
   registerMarkdownPlugin, registerPostProcessor, registerCodeBlockProcessor,
@@ -41,7 +42,7 @@ function remember(id: string, enabled?: boolean) {
   preferences = next
 }
 
-export interface PluginSnapshot {
+export interface PluginSnapshot extends PluginDetails {
   id: string
   name: string
   version: string
@@ -66,6 +67,7 @@ export function pluginSnapshot(): PluginSnapshot[] {
     permissions: Array.isArray(rec.manifest.permissions) ? rec.manifest.permissions.map(String) : [],
     commands: ((rec.manifest.contributes as { commands?: Array<{ id: string; title: string }> } | undefined)?.commands ?? []).map((c) => ({ id: c.id, title: c.title })),
     message: rec.message,
+    ...Object.fromEntries(['author', 'category', 'usage', 'examples', 'changelog', 'minAppVersion'].filter(key => rec.manifest[key] !== undefined).map(key => [key, rec.manifest[key]])),
   }))
 }
 export function onPluginStateChange(cb: () => void): () => void {

@@ -79,9 +79,8 @@
 
 /* ---------- callouts (Obsidian-compatible) ---------- */
 .md-preview blockquote.md-callout {
-  --callout-accent: var(--accent);
-  border-left: 4px solid var(--callout-accent);
-  background: color-mix(in srgb, var(--callout-accent) 7%, transparent);
+  border-left: 4px solid var(--callout-accent, var(--accent));
+  background: color-mix(in srgb, var(--callout-accent, var(--accent)) 7%, transparent);
   color: var(--text);
 }
 .md-preview blockquote.md-callout::before {
@@ -90,7 +89,7 @@
   font-weight: 700;
   font-size: 0.95em;
   margin: 0.5em 0 0.25em;
-  color: var(--callout-accent);
+  color: var(--callout-accent, var(--accent));
 }
 .md-preview blockquote.md-callout > p:first-child:empty { display: none; }
 .md-preview blockquote.md-callout > *:last-child { margin-bottom: 0.3em; }

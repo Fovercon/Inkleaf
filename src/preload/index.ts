@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import type { CatalogState, PluginResult } from '../shared/plugins'
 import type { UpdateState } from '../shared/updates'
 import type { HistoryList, HistoryVersion, SearchOptions, SearchReport, BatchPreview, BatchResult } from '../shared/knowledge'
 import { CH, type TreeNode, type TextHit, type OpResult, type ConfirmOptions, type FsEvent, type TagCount, type Backlink, type ImageResolution } from '../shared/ipc'
@@ -34,6 +35,10 @@ const api = {
   indexPeek: (p: string): Promise<{ title: string; excerpt: string } | null> => ipcRenderer.invoke(CH.indexPeek, p),
   indexFilesByTag: (tag: string): Promise<string[]> => ipcRenderer.invoke(CH.indexFilesByTag, tag),
   indexListNames: (): Promise<{ name: string; path: string }[]> => ipcRenderer.invoke(CH.indexListNames),
+  pluginsCatalog: (): Promise<CatalogState> => ipcRenderer.invoke(CH.pluginsCatalog),
+  pluginsCheckUpdates: (): Promise<CatalogState> => ipcRenderer.invoke(CH.pluginsCheckUpdates),
+  pluginsInstallCatalog: (id: string, version: string): Promise<PluginResult> => ipcRenderer.invoke(CH.pluginsInstallCatalog, id, version),
+  pluginsUpdateLocal: (id: string): Promise<PluginResult> => ipcRenderer.invoke(CH.pluginsUpdateLocal, id),
   pluginsList: (): Promise<{ id: string; name: string; version: string; mainUrl: string; manifest: Record<string, unknown> }[]> => ipcRenderer.invoke(CH.pluginsList),
   pluginsReveal: (): Promise<void> => ipcRenderer.invoke(CH.pluginsReveal),
   pluginsInstall: (): Promise<{ ok: boolean; canceled?: boolean; error?: string; id?: string }> => ipcRenderer.invoke(CH.pluginsInstall),

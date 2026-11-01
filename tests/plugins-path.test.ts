@@ -13,11 +13,13 @@ async function fixture() {
   await mkdir(root)
   ;(globalThis as any).__pluginUserData = directory
   const handlers = new Map<string, (...args: any[]) => Promise<any>>()
-  const bridge = { handlers, selected: '', trash: async (target: string) => rm(target, { recursive: true }), openError: '' }
+  const bridge = { handlers, selected: '', trash: async (target: string) => rm(target, { recursive: true }), openError: '', confirm: true, failCommit: false }
   ;(globalThis as any).__pluginHostFixture = bridge
   const bundle = await build({ entryPoints: ['src/main/plugins-host.ts'], bundle: true, write: false, platform: 'node', format: 'cjs', logLevel: 'silent', plugins: [{ name: 'mock-electron', setup(build) {
+    build.onResolve({ filter: /^node:fs\/promises$/ }, args => args.namespace === 'fixture-fs' ? { path: args.path, external: true } : { path: 'fs', namespace: 'fixture-fs' })
+    build.onLoad({ filter: /.*/, namespace: 'fixture-fs' }, () => ({ contents: `const fs=require('node:fs/promises');export default {...fs,rename:async(from,to)=>{if(globalThis.__pluginHostFixture.failCommit&&from.endsWith('/payload'))throw Error('simulated commit failure');return fs.rename(from,to)}}` }))
     build.onResolve({ filter: /^electron$/ }, () => ({ path: 'electron', namespace: 'fixture' }))
-    build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `const f=globalThis.__pluginHostFixture;export const app={getPath:()=>globalThis.__pluginUserData};export const ipcMain={handle:(id,fn)=>f.handlers.set(id,fn)};export const dialog={showOpenDialog:async()=>({canceled:!f.selected,filePaths:f.selected?[f.selected]:[]})};export const shell={trashItem:path=>f.trash(path),openPath:async()=>f.openError}` }))
+    build.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `const f=globalThis.__pluginHostFixture;export const app={getPath:()=>globalThis.__pluginUserData,getVersion:()=> '0.5.1'};export const ipcMain={handle:(id,fn)=>f.handlers.set(id,fn)};export const dialog={showMessageBox:async()=>({response:f.confirm?1:0}),showOpenDialog:async()=>({canceled:!f.selected,filePaths:f.selected?[f.selected]:[]})};export const shell={trashItem:path=>f.trash(path),openPath:async()=>f.openError}` }))
   } }] })
   const module = { exports: {} as any }
   new Function('module', 'exports', 'require', bundle.outputFiles[0].text)(module, module.exports, createRequire(path.join(repository, 'package.json')))
@@ -126,4 +128,88 @@ test('unknown capabilities and colliding command namespaces are rejected at disc
   await writeFile(path.join(collision, 'main.mjs'), 'export function activate() {}')
   await writeFile(path.join(collision, 'ink.plugin.json'), JSON.stringify({ id: 'collision', version: '1.0.0', main: 'main.mjs', permissions: ['commands'], contributes: { commands: [{ id: 'save', title: 'Overwrite core' }] } }))
   assert.deepEqual(await api.listPlugins(), [])
+})
+
+
+test('catalog installation validates actual packages and does not auto-enable them', async t => {
+  const { directory, root, invoke } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const catalog = await invoke('catalog')
+  assert.equal(catalog.source, 'bundled')
+  assert.equal(catalog.entries.length, 3)
+  assert.equal(catalog.entries.some((p: any) => p.files || p.hashes), false, 'executable payloads must not cross IPC')
+  assert.equal((await invoke('installCatalog', 'inkleaf.reading-time', '1.0.0')).ok, true)
+  const manifest = JSON.parse(await readFile(path.join(root, 'inkleaf.reading-time', 'ink.plugin.json'), 'utf8'))
+  assert.equal(manifest.id, 'inkleaf.reading-time')
+  assert.deepEqual(manifest.permissions, ['render'])
+  assert.equal((await invoke('installCatalog', 'bundled.callout', '0.1.1')).ok, false)
+  assert.equal((await invoke('installCatalog', 'inkleaf.external-links', '99.0.0')).ok, false)
+})
+
+test('local updates enforce identity, strictly newer versions and explicit native confirmation', async t => {
+  const { directory, root, install, bridge, invoke, api } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const current = await install('legacy-folder', 'main.mjs')
+  await writeFile(path.join(current, 'main.mjs'), 'old code')
+  await writeFile(path.join(current, 'ink.plugin.json'), JSON.stringify({ id: 'demo', version: '1.0.0', permissions: [] }))
+  const source = path.join(directory, 'new version'); await mkdir(source)
+  bridge.selected = source
+  const manifest = { id: 'other', version: '2.0.0', main: 'main.mjs', permissions: ['render'] }
+  const save = () => writeFile(path.join(source, 'ink.plugin.json'), JSON.stringify(manifest))
+  await writeFile(path.join(source, 'main.mjs'), 'new code'); await save()
+  assert.equal((await invoke('updateLocal', 'demo')).ok, false)
+  manifest.id = 'demo'; manifest.version = '1.0.0'; await save()
+  assert.equal((await invoke('updateLocal', 'demo')).ok, false)
+  manifest.version = '2.0.0'; await save(); bridge.confirm = false
+  assert.equal((await invoke('updateLocal', 'demo')).canceled, true)
+  assert.equal(await readFile(path.join(current, 'main.mjs'), 'utf8'), 'old code')
+  bridge.confirm = true
+  assert.equal((await invoke('updateLocal', 'demo')).ok, true)
+  assert.equal(await readFile(path.join(current, 'main.mjs'), 'utf8'), 'new code')
+  assert.equal((await api.listPlugins())[0].version, '2.0.0')
+  assert.deepEqual(await readdir(root), ['legacy-folder'], 'successful update leaves no transaction debris')
+})
+
+test('unsafe or incompatible upgrades preserve the original plugin', async t => {
+  const { directory, install, bridge, invoke } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const current = await install('demo', 'main.mjs'); await writeFile(path.join(current, 'main.mjs'), 'old code')
+  const source = path.join(directory, 'new'); await mkdir(source); bridge.selected = source
+  await writeFile(path.join(source, 'main.mjs'), 'new code')
+  const manifest = { id: 'demo', version: '2.0.0', minAppVersion: '99.0.0', permissions: [] }
+  await writeFile(path.join(source, 'ink.plugin.json'), JSON.stringify(manifest))
+  assert.equal((await invoke('updateLocal', 'demo')).ok, false)
+  manifest.minAppVersion = '0.5.1'
+  await writeFile(path.join(source, 'ink.plugin.json'), JSON.stringify(manifest))
+  await symlink(directory, path.join(source, 'escape'))
+  assert.equal((await invoke('updateLocal', 'demo')).ok, false)
+  assert.equal(await readFile(path.join(current, 'main.mjs'), 'utf8'), 'old code')
+})
+
+test('a fresh host restores an interrupted upgrade before discovering plugins', async t => {
+  const { directory, root, api } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const stage = path.join(root, '.upgrade-11111111-1111-1111-1111-111111111111')
+  const previous = path.join(stage, 'previous'); await mkdir(previous, { recursive: true })
+  await writeFile(path.join(stage, 'transaction.json'), JSON.stringify({ target: 'demo' }))
+  await writeFile(path.join(previous, 'ink.plugin.json'), JSON.stringify({ id: 'demo', version: '1.0.0', permissions: [] }))
+  await writeFile(path.join(previous, 'main.mjs'), 'original')
+  assert.equal((await api.listPlugins())[0].version, '1.0.0')
+  assert.deepEqual(await readdir(root), ['demo'])
+})
+
+
+test('a failed commit rolls back the moved version and removes transaction files', async t => {
+  const { directory, root, install, bridge, invoke, api } = await fixture()
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const current = await install('demo', 'main.mjs'); await writeFile(path.join(current, 'main.mjs'), 'old code')
+  const source = path.join(directory, 'new'); await mkdir(source); bridge.selected = source
+  await writeFile(path.join(source, 'main.mjs'), 'new code')
+  await writeFile(path.join(source, 'ink.plugin.json'), JSON.stringify({ id: 'demo', version: '2.0.0', permissions: [] }))
+  bridge.failCommit = true
+  const failed = await invoke('updateLocal', 'demo')
+  assert.equal(failed.ok, false); assert.match(failed.error, /simulated commit failure/)
+  assert.equal(await readFile(path.join(current, 'main.mjs'), 'utf8'), 'old code')
+  assert.equal((await api.listPlugins())[0].version, '1.0.0')
+  assert.deepEqual(await readdir(root), ['demo'])
 })

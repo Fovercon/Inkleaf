@@ -137,12 +137,31 @@
 <div id="pc-overlay" role="dialog" aria-modal="true" aria-label="插件中心" aria-describedby="pc-hint">
   <div class="pc-dialog">
     <div class="pc-top"><span class="pc-heading">插件中心</span><button class="pc-close" aria-label="关闭">✕</button></div>
-    <div class="pc-intro"><span id="pc-summary"></span><p id="pc-hint">按需扩展墨页。从本地文件夹安装，启用前可查看插件权限。</p></div>
-    <div id="pc-list"></div>
+    <p id="pc-hint" class="pc-subtitle">让工具顺应你的写作习惯。</p>
+    <div class="pc-workspace">
+      <aside class="pc-sidebar">
+        <nav aria-label="插件导航">
+          <button data-view="installed" class="pc-nav selected" aria-pressed="true">已安装 <span id="pc-count-installed"></span></button>
+          <button data-view="discover" class="pc-nav" aria-pressed="false">发现插件 <span id="pc-count-discover"></span></button>
+          <button data-view="updates" class="pc-nav" aria-pressed="false">可用更新 <span id="pc-count-updates"></span></button>
+        </nav>
+        <p class="pc-sidebar-note">按需启用，专注文字。<br>内置插件随墨页更新。</p>
+      </aside>
+      <section class="pc-browser" aria-label="插件列表">
+        <div class="pc-searchbar">
+          <input id="pc-search" type="search" placeholder="搜索名称、说明或作者" aria-label="搜索插件">
+          <select id="pc-category" aria-label="插件分类"><option value="">全部分类</option></select>
+        </div>
+        <div id="pc-summary"></div>
+        <div id="pc-list" aria-busy="false"></div>
+      </section>
+      <section id="pc-detail" aria-label="插件详情"></section>
+    </div>
     <div id="pc-status" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="pc-footer">
       <button id="pc-reveal" class="pc-btn">打开插件文件夹</button>
       <button id="pc-install" class="pc-btn primary">从文件夹安装…</button>
+      <button id="pc-check-updates" class="pc-btn">检查更新</button>
       <button id="pc-refresh" class="pc-btn">刷新</button>
     </div>
   </div>

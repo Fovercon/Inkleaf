@@ -1,0 +1,20 @@
+{
+  "id": "inkleaf.external-links",
+  "name": "外链标记",
+  "version": "1.0.0",
+  "main": "main.mjs",
+  "permissions": [
+    "render"
+  ],
+  "author": "Inkleaf",
+  "category": "阅读",
+  "description": "为 HTTP / HTTPS 外部链接添加 ↗ 标记，便于辨识。",
+  "usage": "启用后自动为外部网页链接添加标记；文档内锚点、图片和本地链接保持原样。",
+  "minAppVersion": "0.5.1",
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "notes": "首次发布。仅处理文档预览，不读写原文。"
+    }
+  ]
+}

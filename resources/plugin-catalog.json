@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "entries": [
+    {
+      "id": "bundled.callout",
+      "name": "提示块（Callout）",
+      "version": "0.1.1",
+      "bundled": true,
+      "permissions": [
+        "render"
+      ],
+      "author": "Inkleaf",
+      "category": "排版",
+      "description": "用彩色提示块标记备注、警告、摘要和引用，兼容 Obsidian 写法。",
+      "usage": "在引用块第一行写 > [!类型] 标题，后续每行以 > 开头。自定义标题可省略；同义类型共用颜色。当前不提供折叠交互。",
+      "examples": [
+        {
+          "title": "note · 备注",
+          "markdown": "> [!note] 备注示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "abstract · 摘要",
+          "markdown": "> [!abstract] 摘要示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "summary · 摘要",
+          "markdown": "> [!summary] 摘要示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "tldr · 摘要",
+          "markdown": "> [!tldr] 摘要示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "info · 信息",
+          "markdown": "> [!info] 信息示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "todo · 待办",
+          "markdown": "> [!todo] 待办示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "tip · 提示",
+          "markdown": "> [!tip] 提示示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "hint · 提示",
+          "markdown": "> [!hint] 提示示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "important · 重要",
+          "markdown": "> [!important] 重要示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "success · 成功",
+          "markdown": "> [!success] 成功示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "check · 完成",
+          "markdown": "> [!check] 完成示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "done · 完成",
+          "markdown": "> [!done] 完成示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "question · 问题",
+          "markdown": "> [!question] 问题示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "help · 帮助",
+          "markdown": "> [!help] 帮助示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "faq · 问题",
+          "markdown": "> [!faq] 问题示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "warning · 警告",
+          "markdown": "> [!warning] 警告示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "caution · 注意",
+          "markdown": "> [!caution] 注意示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "attention · 注意",
+          "markdown": "> [!attention] 注意示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "danger · 危险",
+          "markdown": "> [!danger] 危险示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "error · 错误",
+          "markdown": "> [!error] 错误示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "bug · 缺陷",
+          "markdown": "> [!bug] 缺陷示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "example · 示例",
+          "markdown": "> [!example] 示例示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "quote · 引用",
+          "markdown": "> [!quote] 引用示例\n> 在这里写需要强调的内容。"
+        },
+        {
+          "title": "cite · 引用",
+          "markdown": "> [!cite] 引用示例\n> 在这里写需要强调的内容。"
+        }
+      ],
+      "changelog": [
+        {
+          "version": "0.1.1",
+          "notes": "修复类型配色被主题色覆盖；提供全部类型的示例。"
+        },
+        {
+          "version": "0.1.0",
+          "notes": "支持 Obsidian 风格提示块、类型标题与配色。"
+        }
+      ]
+    },
+    {
+      "id": "inkleaf.external-links",
+      "name": "外链标记",
+      "version": "1.0.0",
+      "main": "main.mjs",
+      "permissions": [
+        "render"
+      ],
+      "author": "Inkleaf",
+      "category": "阅读",
+      "description": "为 HTTP / HTTPS 外部链接添加 ↗ 标记，便于辨识。",
+      "usage": "启用后自动为外部网页链接添加标记；文档内锚点、图片和本地链接保持原样。",
+      "minAppVersion": "0.5.1",
+      "changelog": [
+        {
+          "version": "1.0.0",
+          "notes": "首次发布。仅处理文档预览，不读写原文。"
+        }
+      ],
+      "files": {
+        "ink.plugin.json": "{\n  \"id\": \"inkleaf.external-links\",\n  \"name\": \"外链标记\",\n  \"version\": \"1.0.0\",\n  \"main\": \"main.mjs\",\n  \"permissions\": [\n    \"render\"\n  ],\n  \"author\": \"Inkleaf\",\n  \"category\": \"阅读\",\n  \"description\": \"为 HTTP / HTTPS 外部链接添加 ↗ 标记，便于辨识。\",\n  \"usage\": \"启用后自动为外部网页链接添加标记；文档内锚点、图片和本地链接保持原样。\",\n  \"minAppVersion\": \"0.5.1\",\n  \"changelog\": [\n    {\n      \"version\": \"1.0.0\",\n      \"notes\": \"首次发布。仅处理文档预览，不读写原文。\"\n    }\n  ]\n}\n",
+        "main.mjs": "export function activate(ink) {\n  ink.pipeline.registerPostProcessor(root => {\n    root.querySelectorAll('a[href]').forEach(a => {\n      if (!/^https?:\\/\\//i.test(a.getAttribute('href') || '') || a.querySelector('img') || a.hasAttribute('data-ink-external-link')) return;\n      a.setAttribute('data-ink-external-link', '');\n      const mark = document.createElement('span');\n      mark.textContent = ' ↗';\n      mark.setAttribute('aria-hidden', 'true');\n      a.append(mark);\n    });\n  });\n}\n"
+      },
+      "hashes": {
+        "ink.plugin.json": "502c9df11714aa76631ad48c234e2c135e417e4875c0bb095592eca2c285995c",
+        "main.mjs": "481074a196ea37b65c64847907bbc99029db5dfe5c042c88122d2c3a6a74d14e"
+      }
+    },
+    {
+      "id": "inkleaf.reading-time",
+      "name": "阅读时间",
+      "version": "1.0.0",
+      "main": "main.mjs",
+      "permissions": [
+        "render"
+      ],
+      "author": "Inkleaf",
+      "category": "阅读",
+      "description": "在预览顶部显示字数和预计阅读时间。",
+      "usage": "启用后自动显示在文档预览顶部，按每分钟 400 字估算。无需修改 Markdown。",
+      "minAppVersion": "0.5.1",
+      "changelog": [
+        {
+          "version": "1.0.0",
+          "notes": "首次发布。仅处理文档预览，不读写原文。"
+        }
+      ],
+      "files": {
+        "ink.plugin.json": "{\n  \"id\": \"inkleaf.reading-time\",\n  \"name\": \"阅读时间\",\n  \"version\": \"1.0.0\",\n  \"main\": \"main.mjs\",\n  \"permissions\": [\n    \"render\"\n  ],\n  \"author\": \"Inkleaf\",\n  \"category\": \"阅读\",\n  \"description\": \"在预览顶部显示字数和预计阅读时间。\",\n  \"usage\": \"启用后自动显示在文档预览顶部，按每分钟 400 字估算。无需修改 Markdown。\",\n  \"minAppVersion\": \"0.5.1\",\n  \"changelog\": [\n    {\n      \"version\": \"1.0.0\",\n      \"notes\": \"首次发布。仅处理文档预览，不读写原文。\"\n    }\n  ]\n}\n",
+        "main.mjs": "export function activate(ink) {\n  ink.pipeline.registerPostProcessor(root => {\n    root.querySelectorAll('[data-ink-reading-time]').forEach(el => el.remove());\n    const copy = root.cloneNode(true);\n    copy.querySelectorAll('pre, code, style, script').forEach(el => el.remove());\n    const text = copy.textContent || '';\n    const count = (text.match(/[\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}]|[\\p{L}\\p{N}]+/gu) || []).length;\n    const p = document.createElement('p');\n    p.setAttribute('data-ink-reading-time', '');\n    p.textContent = '约 ' + count + ' 字 · 阅读约 ' + Math.max(1, Math.ceil(count / 400)) + ' 分钟';\n    root.prepend(p);\n  });\n}\n"
+      },
+      "hashes": {
+        "ink.plugin.json": "58b7c4b33066612907d805357ff600ad52d6d07cd2ee856c1fb2482d8ccb9045",
+        "main.mjs": "65114ed37be1bcd632714274d3c7f455edab430796d2d8c7a893aa67509ac705"
+      }
+    }
+  ]
+}
