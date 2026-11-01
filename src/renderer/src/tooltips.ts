@@ -67,7 +67,9 @@ export function setupTooltips(): void {
     }
     target = null; heldTitle = undefined
     if (tip.matches(':popover-open')) tip.hidePopover()
-    if (!tip.isConnected) document.body.append(tip)
+    // A dialog may blur its button before it is removed (Linux event order).
+    // Keep the hidden singleton outside that dialog so teardown cannot detach it.
+    if (tip.parentElement !== document.body) document.body.append(tip)
   }
   function show(next: HTMLElement, delay: number) {
     if (target === next) return
