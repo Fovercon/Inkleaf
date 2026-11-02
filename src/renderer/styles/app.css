@@ -1338,3 +1338,13 @@ button.pc-name { border: none; background: none; padding: 0; text-align: left; f
 }
 
 button.tab-close { font: inherit; border: 0; background: transparent; padding: 0; }
+
+/* Intrinsic link/context widths must never participate in the workspace row size. */
+#right-panes { flex: 0 0 auto; max-width: min(420px, 38vw); overflow: hidden; }
+#right-panes > aside { width: 100%; min-width: 0; max-width: 100%; }
+#backlink-list { min-width: 0; overflow-x: hidden; }
+button.backlink-item { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.backlink-item strong { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backlink-item .bl-context { max-width: 100%; overflow-wrap: anywhere; }
+#doc-wrap { min-width: min(240px, 45vw); }
+#preview-pane { min-width: min(160px, 30vw); }

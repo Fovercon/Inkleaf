@@ -7,7 +7,7 @@ import { escapeHtml } from './util'
 import { applyTheme, setTheme, cycleTheme, onThemeChange, currentTheme } from './theme'
 import { FileTree } from './fileTree'
 import { EditorPane } from './editor'
-import { clearPreview, renderPreview, handleLinkClick, setTaskToggleHandler } from './preview'
+import { clearPreview, renderPreview, handleLinkClick, setTaskToggleHandler, onPreviewRendered } from './preview'
 import { buildOutline, updateActiveHeading } from './outline'
 import { setupSync } from './syncScroll'
 import { setupLightbox } from './lightbox'
@@ -103,11 +103,11 @@ function registerBuiltinPanels() {
   }
   registerPanel(sidebarPanel)
   registerPanel({
-    id: 'outline', slot: 'right', el: outlinePane, resizer: $('#resizer-outline'),
+    id: 'outline', slot: 'right', el: outlinePane, widthTarget: $('#right-panes'), resizer: $('#resizer-outline'),
     min: 160, max: 420, defaultWidth: 184,
   })
   registerPanel({
-    id: 'backlink', slot: 'right', el: $('#backlink-pane'), resizer: $('#resizer-outline'),
+    id: 'backlink', slot: 'right', el: $('#backlink-pane'), widthTarget: $('#right-panes'), resizer: $('#resizer-outline'),
     min: 160, max: 420, defaultWidth: 184, sharesWidth: 'outline',
   })
 }
@@ -120,22 +120,33 @@ function applyLayout() {
   // Keep all four panes usable when the window is narrowed, without changing
   // the user's saved widths for the next full-size window.
   const width = $('#workspace').clientWidth
-  const panelWidth = (p: PanelDef) => s.widths[p.id] ?? p.defaultWidth
-  let desiredWidth = !collapsed('editor') && !collapsed('preview') ? s.widths.editor : 0
-  for (const p of listPanels()) if (!collapsed(p.id)) desiredWidth += panelWidth(p)
+  const panelWidth = (p: PanelDef) => {
+    const owner = p.sharesWidth ? getPanel(p.sharesWidth) ?? p : p
+    const saved = s.widths[owner.id]
+    return Number.isFinite(saved) ? Math.min(owner.max, Math.max(owner.min, saved)) : owner.defaultWidth
+  }
+  const right = listPanels().filter(p => p.slot === 'right' && !collapsed(p.id))
+  const rightWidth = Math.max(0, ...right.map(panelWidth))
+  const editorWidth = Number.isFinite(s.widths.editor) ? Math.min(1400, Math.max(240, s.widths.editor)) : 400
+  let desiredWidth = !collapsed('editor') && !collapsed('preview') ? editorWidth : 0
+  for (const p of listPanels()) if (p.slot === 'left' && !collapsed(p.id)) desiredWidth += panelWidth(p)
+  desiredWidth += rightWidth
   const scale = Math.min(1, Math.max(0, width - 260) / Math.max(1, desiredWidth))
   for (const p of listPanels()) {
     const c = collapsed(p.id)
     p.el.classList.toggle('pane-collapsed', c)
     // sharesWidth 面板（右栏堆叠）不设自身宽度，随容器铺满
-    if (!p.sharesWidth) p.el.style.width = c ? '' : `${Math.round(panelWidth(p) * scale)}px`
+    p.el.style.width = p.slot === 'left' && !c ? `${Math.round(panelWidth(p) * scale)}px` : ''
     p.onLayout?.(c)
     $(`#btn-toggle-${p.id}`)?.setAttribute('aria-pressed', String(!c))
   }
+  $('#right-panes').style.width = `${Math.round(rightWidth * scale)}px`
+  $('#right-panes').classList.toggle('pane-collapsed', !right.length)
+  $('#resizer-outline').classList.toggle('pane-collapsed', !right.length)
   // with the preview hidden the editor takes over the full area
   const editorFills = collapsed('preview') && !collapsed('editor')
   editorPane.classList.toggle('fill', editorFills)
-  editorPane.style.width = editorFills ? '' : `${s.widths.editor * scale}px`
+  editorPane.style.width = editorFills ? '' : `${editorWidth * scale}px`
   $('#resizer-editor').classList.toggle('pane-collapsed', collapsed('editor') || collapsed('preview'))
   $('#btn-toggle-editor').setAttribute('aria-pressed', String(!collapsed('editor')))
   $('#btn-toggle-preview').setAttribute('aria-pressed', String(!collapsed('preview')))
@@ -526,7 +537,6 @@ async function openFileNow(path: string, opts?: OpenDocumentOptions): Promise<bo
     fileTitle.textContent = name
     document.title = `${name} — 墨页 · Inkleaf`
     await renderPreview(previewScroll, preview, editor.getContent(), path)
-    buildOutline(preview, outlineNav)
     updateActiveHeading(preview, outlineNav)
     const saved = restored ? sess.scrollY : getState().scrollByPath[path]
     const line = opts?.line ?? (opts?.anchor ? findHeadingLine(path, opts.anchor) : undefined)
@@ -858,7 +868,6 @@ const documentTools: DocumentToolsContext = {
     editor.replaceContent(next)
     await editor.saveNow()
     await renderPreview(previewScroll, preview, editor.getContent(), path)
-    buildOutline(preview, outlineNav)
   }),
   path: () => runtime.currentFile, root: () => runtime.libraryRoot, content: () => editor.getContent(),
   save: () => serializeNavigation(saveAllDocuments),
@@ -1002,7 +1011,6 @@ function setupEditorCallbacks() {
     const delay = size > 100_000 ? 600 : size > 30_000 ? 400 : 250
     renderTimer = window.setTimeout(async () => {
       await renderPreview(previewScroll, preview, editor.getContent(), runtime.currentFile)
-      buildOutline(preview, outlineNav)
     }, delay)
   }
   setTaskToggleHandler((line, checked) => editor.toggleTaskAtLine(line, checked))
@@ -1058,7 +1066,6 @@ function setupFsWatch() {
             tab.stale = false
             tabs.capturePath(event.path, editor.exportState(), scroll, false)
             await renderPreview(previewScroll, preview, content, event.path)
-            buildOutline(preview, outlineNav)
             previewScroll.scrollTop = scroll
           } catch { /* A later unlink event or activation handles a vanished file. */ }
         }
@@ -1095,6 +1102,11 @@ function setupDragDrop() {
 async function boot() {
   setupPlatformUi()
   setupTooltips()
+  onPreviewRendered((container, path) => {
+    if (container !== preview || path !== runtime.currentFile) return
+    buildOutline(preview, outlineNav)
+    updateActiveHeading(preview, outlineNav)
+  })
   // 内置插件立即激活；外部插件通过沙箱声明注册。
   registerCalloutPlugin()
   void bootPlugins()
