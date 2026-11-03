@@ -82,6 +82,10 @@ jobs:
         timeout-minutes: 3
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:workspace-layout-ui
 
+      - name: Verify reading settings, diagram engines and model protocols
+        timeout-minutes: 4
+        run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1600x1000x24' npm run test:reading-services-ui
+
       - name: Verify plugin HTML preserves layout and interactions
         timeout-minutes: 4
         run: dbus-run-session -- xvfb-run -a --server-args='-screen 0 1360x880x24' npm run test:plugin-dom-ui

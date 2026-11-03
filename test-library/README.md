@@ -129,6 +129,19 @@ sequenceDiagram
     R-->>U: 实时预览更新
 ```
 
+## Graphviz 图表
+
+离线渲染依赖与算法流程：
+
+```dot
+digraph {
+  rankdir=LR;
+  Start -> Check;
+  Check -> Done [label="yes"];
+  Check -> Start [label="retry"];
+}
+```
+
 ## 图片
 
 相对路径图片（来自书库 assets 目录）：

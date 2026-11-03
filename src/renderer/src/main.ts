@@ -23,6 +23,8 @@ import { setBacklinkNav, refreshBacklinks } from './backlink'
 import { TabManager, type DocSession } from './docSession'
 import { bootPlugins, onPluginStateChange, pluginSnapshot } from './pluginRuntime'
 import { openPluginCenter, setupPluginCenter } from './pluginCenter'
+import { registerModelPlugin } from './modelReader'
+import { registerDiagramPlugins } from './diagrams'
 import { registerCalloutPlugin } from './bundled-callout'
 import { openHistory, openProperties, type DocumentToolsContext } from './documentTools'
 import { openMedia } from './mediaTools'
@@ -30,6 +32,7 @@ import { openTable } from './tableTools'
 import { openDaily, openTemplates } from './writingTools'
 import { rememberLibrary, libraryWorkspace, openLibraries, openLayouts } from './workspaces'
 import { openAdvancedSearch, openTagRename } from './searchTools'
+import { applyReadingSettings, openReadingSettings } from './readingSettings'
 import { toolDialog, element } from './toolDialog'
 import { registerPanel, listPanels, getPanel, attachPanelResizers, type PanelDef } from './panels'
 
@@ -887,6 +890,10 @@ const documentTools: DocumentToolsContext = {
 }
 function openDocumentTools() {
   const d = toolDialog('创作与知识工具'); d.body.classList.add('tool-menu')
+  d.button('解释选中文字', () => { d.dialog.close(); runCommand('bundled.ai-reader.explain') }, d.body)
+  d.button('翻译选中文字', () => { d.dialog.close(); runCommand('bundled.ai-reader.translate') }, d.body)
+  d.button('总结选中文字', () => { d.dialog.close(); runCommand('bundled.ai-reader.summarize') }, d.body)
+  d.button('阅读排版', () => { d.dialog.close(); openReadingSettings() }, d.body)
   d.button('插入正文目录', () => { d.dialog.close(); runCommand('insert-toc') }, d.body).disabled = !runtime.currentFile
   d.button('每日笔记', () => { d.dialog.close(); openDaily(documentTools) }, d.body).disabled = !runtime.libraryRoot
   d.button('每日笔记设置', () => { d.dialog.close(); openDaily(documentTools, true) }, d.body)
@@ -899,6 +906,7 @@ function openDocumentTools() {
 }
 
 function registerBuiltinCommands() {
+  registerCommand({ id: 'reading-settings', title: '阅读排版：宽度与留白…', run: openReadingSettings })
   registerCommand({ id: 'recent-libraries', title: '最近书库与切换…', run: () => openLibraries(openLibrary, openFolderAction) })
   registerCommand({ id: 'workspace-layouts', title: '阅读与写作布局…', run: () => openLayouts(() => { applyFocusModes(); editor.setTypewriter(getState().typewriter); applyLayout() }) })
   registerCommand({ id: 'edit-image', title: '图片尺寸与文字…', run: () => openMedia(documentTools, true), when: () => !!runtime.currentFile })
@@ -956,6 +964,9 @@ function registerBuiltinCommands() {
 
 function setupActions() {
   for (const id of ['library-switch', 'empty-switch-library', 'home-switch-library']) $('#'+id).addEventListener('click', () => openLibraries(openLibrary, openFolderAction))
+  $('#btn-ai-reader').addEventListener('click', () => { if (!runCommand('bundled.ai-reader.explain')) openPluginCenter() })
+  $('#btn-reading-settings').addEventListener('click', openReadingSettings)
+  applyReadingSettings()
   $('#btn-tools').addEventListener('click', openDocumentTools)
   // 工具栏与空状态按钮统一走命令分发
   $('#btn-open-folder').addEventListener('click', () => runCommand('open-folder'))
@@ -1109,6 +1120,8 @@ async function boot() {
   })
   // 内置插件立即激活；外部插件通过沙箱声明注册。
   registerCalloutPlugin()
+  registerModelPlugin(documentTools)
+  registerDiagramPlugins(() => { if (runtime.currentFile) void renderPreview(previewScroll, preview, editor.getContent(), runtime.currentFile) })
   void bootPlugins()
   setupPluginCenter()
   let pluginRenderTimer: ReturnType<typeof setTimeout>

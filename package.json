@@ -20,7 +20,7 @@
     "test:updates": "node scripts/test-updater.mjs",
     "test:platform": "node scripts/test-platform.mjs",
     "test:platform-ui": "node scripts/test-platform-ui.mjs",
-    "test:regressions": "node scripts/test-unit.mjs tests/index-service.test.ts tests/ipc-library-race.test.ts tests/local-assets.test.ts tests/local-images.test.ts tests/doc-session.test.ts tests/plugins-security.test.ts tests/plugins-path.test.ts tests/preview-security.test.ts tests/document-history.test.ts tests/markdown-tools.test.ts tests/knowledge-service.test.ts tests/plugin-catalog.test.ts tests/update-check.test.ts",
+    "test:regressions": "node scripts/test-unit.mjs tests/index-service.test.ts tests/ipc-library-race.test.ts tests/local-assets.test.ts tests/local-images.test.ts tests/doc-session.test.ts tests/plugins-security.test.ts tests/plugins-path.test.ts tests/preview-security.test.ts tests/document-history.test.ts tests/markdown-tools.test.ts tests/knowledge-service.test.ts tests/plugin-catalog.test.ts tests/update-check.test.ts tests/services.test.ts && node tests/services-store.test.mjs",
     "test:doc-session-ui": "node tests/doc-session-renderer.mjs",
     "test:plugin-dom-ui": "node tests/plugin-dom-renderer.mjs",
     "test:plugin-center-ui": "node tests/plugin-center-renderer.mjs && node tests/plugin-market-renderer.mjs",
@@ -30,7 +30,8 @@
     "plugins:catalog": "node scripts/build-plugin-catalog.mjs",
     "test:plugin-market-ui": "node tests/plugin-market-renderer.mjs",
     "test:tooltips-ui": "node tests/tooltips-renderer.mjs",
-    "test:workspace-layout-ui": "node tests/workspace-layout-renderer.mjs"
+    "test:workspace-layout-ui": "node tests/workspace-layout-renderer.mjs",
+    "test:reading-services-ui": "node tests/reading-services-renderer.mjs"
   },
   "build": {
     "appId": "com.fovercon.inkleaf",
@@ -130,6 +131,7 @@
     "@codemirror/state": "^6.4.3",
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.34.1",
+    "@viz-js/viz": "3.31.0",
     "@vscode/markdown-it-katex": "^1.1.1",
     "chokidar": "^3.6.0",
     "codemirror": "^6.0.1",
