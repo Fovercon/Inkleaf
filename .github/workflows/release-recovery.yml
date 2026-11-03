@@ -1,0 +1,105 @@
+name: Recover release with Intel macOS builder
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing stable tag; source must already be in main'
+        required: true
+        type: string
+      linux_run_id:
+        description: 'Completed release/Linux run with passing native x64, ARM64 and Ubuntu 24.04 checks for this exact tag'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  mac:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+      WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      LINUX_RUN_ID: ${{ inputs.linux_run_id }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact source and completed native Linux evidence
+        run: |
+          node --test tests/release-source.test.mjs
+          node scripts/verify-release-source.mjs
+          git checkout --detach "$RELEASE_TAG"
+          # The original tests assumed the host was the target ARM64 machine.
+          # Overlay only the corrected fixture; all packaged source stays at the tag.
+          git show "$WORKFLOW_SOURCE_SHA:tests/update-check.test.ts" > tests/update-check.test.ts
+          git diff --exit-code -- src resources build package.json package-lock.json esbuild.mjs scripts
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run test:updates
+      - run: npm run test:platform
+      - run: npm run test:regressions
+      - run: npm run test:doc-session-ui
+      - run: npm run test:workspace-layout-ui
+      - run: npm run test:reading-services-ui
+      - run: npm run test:plugin-dom-ui
+      - run: npm run test:plugin-center-ui
+      - run: npm run test:tooltips-ui
+      - run: npm run test:bug-tickets-ui
+      - run: npm run release:build -- --arch arm64
+      - run: npm run test:ui-failure
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm64
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/Inkleaf-*-mac-arm64.zip
+            dist/Inkleaf-*-mac-arm64.zip.sha256
+
+  draft:
+    needs: mac
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      LINUX_RUN_ID: ${{ inputs.linux_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Recheck source evidence and select immutable package source
+        run: |
+          node scripts/verify-release-source.mjs
+          git checkout --detach "$RELEASE_TAG"
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-arm64
+          path: release-assets
+      - name: Download verified native Linux packages
+        run: |
+          gh run download "$LINUX_RUN_ID" --name linux-x64 --dir release-assets
+          gh run download "$LINUX_RUN_ID" --name linux-arm64 --dir release-assets
+      - name: Verify all package hashes and create a complete draft
+        run: node scripts/publish-release.mjs release-assets

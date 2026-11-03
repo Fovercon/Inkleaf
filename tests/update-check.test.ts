@@ -3,9 +3,9 @@ import { test } from 'node:test'
 import { build } from 'esbuild'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-async function check(status: number, body: unknown) {
+async function check(status: number, body: unknown, targetArch = 'arm64') {
   const root=process.cwd()
-  const bundle=await build({entryPoints:['src/main/updater.ts'],write:false,bundle:true,platform:'node',format:'cjs',logLevel:'silent',plugins:[{name:'response-fixture',setup(builder){
+  const bundle=await build({entryPoints:['src/main/updater.ts'],write:false,bundle:true,platform:'node',format:'cjs',logLevel:'silent',define:{'process.platform':JSON.stringify('darwin'),'process.arch':JSON.stringify(targetArch)},plugins:[{name:'response-fixture',setup(builder){
     builder.onResolve({filter:/^electron$/},()=>({path:'electron',namespace:'fixture'}))
     builder.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:`
       const {EventEmitter}=require('node:events'),{PassThrough}=require('node:stream');
@@ -34,4 +34,9 @@ test('the same transport detects the real package shape from a newer public rele
   const name='Inkleaf-0.5.2-mac-arm64.zip'
   const state=await check(200,{tag_name:'v0.5.2',draft:false,prerelease:false,assets:[{name,state:'uploaded',size:2048,digest:'sha256:'+'a'.repeat(64),browser_download_url:'https://github.com/Fovercon/Inkleaf/releases/download/v0.5.2/'+name}]})
   assert.equal(state.status,'available');assert.equal(state.version,'0.5.2')
+})
+
+test('Intel remains unsupported; transport fixtures target the shipped ARM64 application explicitly',async()=>{
+  const state=await check(200,{tag_name:'v0.5.3',draft:false,prerelease:false,assets:[]},'x64')
+  assert.equal(state.status,'unsupported')
 })
