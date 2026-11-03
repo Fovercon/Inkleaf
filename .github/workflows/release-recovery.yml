@@ -27,6 +27,7 @@ jobs:
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
+      WORKFLOW_SOURCE_SHA: ${{ github.sha }}
       RELEASE_TAG: ${{ inputs.tag }}
       LINUX_RUN_ID: ${{ inputs.linux_run_id }}
       GH_TOKEN: ${{ github.token }}
@@ -43,6 +44,10 @@ jobs:
           node --test tests/release-source.test.mjs
           node scripts/verify-release-source.mjs
           git checkout --detach "$RELEASE_TAG"
+          # The original tests assumed the host was the target ARM64 machine.
+          # Overlay only the corrected fixture; all packaged source stays at the tag.
+          git show "$WORKFLOW_SOURCE_SHA:tests/update-check.test.ts" > tests/update-check.test.ts
+          git diff --exit-code -- src resources build package.json package-lock.json esbuild.mjs scripts
       - run: npm ci
       - run: npm run typecheck
       - run: npm run test:updates
