@@ -30,6 +30,7 @@ async function launch() {
   await until(`window.ink?.list().filter(p=>p.state==='active').length===4`)
 }
 app.whenReady().then(async () => {
+  await fs.mkdir(path.join(process.cwd(),'verify'),{recursive:true})
   const svg = await fs.readFile(path.join(process.cwd(), 'tests/fixtures/plantuml-sequence.svg'), 'utf8')
   server = http.createServer(async (req, res) => {
     requests++
@@ -53,7 +54,14 @@ app.whenReady().then(async () => {
   ipcMain.removeHandler('dialog:confirm'); ipcMain.handle('dialog:confirm', () => true)
   ipcMain.handle('update:getState', () => ({ status: 'idle', currentVersion: 'test' }))
   ipcMain.handle('plugins:list', () => [])
+  ipcMain.handle('plugins:catalog', () => ({source:'bundled',entries:require(path.join(process.cwd(),'resources/plugin-catalog.json')).entries.map(({files,hashes,...entry})=>entry)}))
   await launch()
+  await run(`document.dispatchEvent(new CustomEvent('mdr-test-command',{detail:{id:'plugins'}}))`)
+  await until(`document.querySelector('#pc-count-discover')?.textContent==='6'`)
+  await run(`document.querySelector('[data-view="discover"]').click()`)
+  for(const id of ['bundled.graphviz','bundled.plantuml','bundled.ai-reader']) assert.ok(await run(`!!document.querySelector('.pc-card[data-id="${id}"]')`))
+  await run(`document.querySelector('.pc-close').click()`)
+  check('plugin discovery includes all new built-ins without changing the legacy remote catalog')
   await run(`__features.getState().collapsed.sidebar=true;__features.getState().collapsed.editor=true;__features.getState().collapsed.outline=true;document.dispatchEvent(new CustomEvent('mdr-test-command',{detail:{id:'toggle-outline'}}));document.dispatchEvent(new CustomEvent('mdr-test-command',{detail:{id:'toggle-outline'}}))`)
   await command('reading-settings')
   assert.equal(await run(`getComputedStyle(document.querySelector('#preview')).maxWidth`), '1000px')

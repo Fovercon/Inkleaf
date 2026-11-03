@@ -6,7 +6,7 @@ import type { RenderContext } from './pipeline'
 
 let worker: Worker | undefined, serial = Promise.resolve(), id = 0
 const cache = new Map<string, string>(), plantCache = new Map<string, string>()
-let plantSerial = Promise.resolve()
+let plantSerial = Promise.resolve(), plantRevision = 0
 function dot(source: string, isCurrent?: () => boolean): Promise<string> {
   if (source.length > 30000) return Promise.reject(new Error('图表超过 30000 个字符，请拆分后阅读'))
   const cached = cache.get(source); if (cached) return Promise.resolve(cached)
@@ -28,13 +28,17 @@ function dot(source: string, isCurrent?: () => boolean): Promise<string> {
   serial = operation.then(() => {}, () => {}); return operation
 }
 function plant(source: string, isCurrent?: () => boolean): Promise<string> {
+  const revision = plantRevision
   const cached = plantCache.get(source); if (cached) return Promise.resolve(cached)
   const operation = plantSerial.then(async () => {
     if (isCurrent && !isCurrent()) throw new Error('图表渲染已过期')
     const existing = plantCache.get(source); if (existing) return existing
     const svg = await window.mdr.renderPlantuml(source)
-    if (plantCache.size >= 24) plantCache.delete(plantCache.keys().next().value!)
-    plantCache.set(source, svg); return svg
+    if (revision === plantRevision) {
+      if (plantCache.size >= 24) plantCache.delete(plantCache.keys().next().value!)
+      plantCache.set(source, svg)
+    }
+    return svg
   })
   plantSerial = operation.then(() => {}, () => {}); return operation
 }
@@ -79,7 +83,7 @@ async function renderDiagram(pre: HTMLElement, source: string, ctx: RenderContex
   }
 }
 export function registerDiagramPlugins(onChange: () => void) {
-  const changed = () => { plantCache.clear(); onChange() }
+  const changed = () => { plantRevision++; plantCache.clear(); onChange() }
   for (const plantuml of [false, true]) {
     const id = plantuml ? 'bundled.plantuml' : 'bundled.graphviz'
     const command = `${id}.settings`
