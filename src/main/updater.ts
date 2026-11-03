@@ -89,7 +89,7 @@ export async function checkForUpdates(): Promise<UpdateState> {
   const timeout = setTimeout(() => controller.abort(), 30000)
   try {
     const res = await request(RELEASE_API, controller.signal, true)
-    if (res.status === 404) { candidate = null; return setState('up-to-date', '当前还没有发布新版本') }
+    if (res.status === 404) { candidate = null; throw new Error('无法访问更新源（404）：仓库可能为私有、地址已变更，或尚无公开版本。请检查发布源或联系维护者。') }
     if (res.status === 403 || res.status === 429) throw new Error('更新检查暂时受限，请稍后重试')
     if (!res.ok) throw new Error(`更新服务器暂时不可用（${res.status}）`)
     const reader = res.body?.getReader()

@@ -1,10 +1,20 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type { CatalogState, PluginResult } from '../shared/plugins'
+import type { ServiceSettings, ServiceSettingsInput, ModelRequest, ModelChunk } from '../shared/services'
 import type { UpdateState } from '../shared/updates'
 import type { HistoryList, HistoryVersion, SearchOptions, SearchReport, BatchPreview, BatchResult } from '../shared/knowledge'
 import { CH, type TreeNode, type TextHit, type OpResult, type ConfirmOptions, type FsEvent, type TagCount, type Backlink, type ImageResolution } from '../shared/ipc'
 
 const api = {
+  serviceSettings: (): Promise<ServiceSettings> => ipcRenderer.invoke(CH.serviceGet),
+  saveServiceSettings: (input: ServiceSettingsInput): Promise<ServiceSettings> => ipcRenderer.invoke(CH.serviceSave, input),
+  renderPlantuml: (source: string): Promise<string> => ipcRenderer.invoke(CH.diagramRender, source),
+  runModel: (request: ModelRequest): Promise<string> => ipcRenderer.invoke(CH.modelRun, request),
+  cancelModel: (id: string): Promise<void> => ipcRenderer.invoke(CH.modelCancel, id),
+  onModelChunk: (cb: (chunk: ModelChunk) => void) => {
+    const handler = (_e: Electron.IpcRendererEvent, chunk: ModelChunk) => cb(chunk)
+    ipcRenderer.on(CH.modelChunk, handler); return () => ipcRenderer.removeListener(CH.modelChunk, handler)
+  },
   platform: process.platform,
   sandboxed: process.sandboxed === true,
   rendererReady: (): void => ipcRenderer.send(CH.rendererReady),

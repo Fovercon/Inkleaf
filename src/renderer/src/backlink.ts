@@ -15,7 +15,7 @@ export async function refreshBacklinks(currentPath: string | null): Promise<void
       for(const link of links) {
         const item=element('button','','backlink-item'); item.title=link.path
         item.append(element('strong',`${link.path.split('/').slice(-2).join('/')}:${link.line}`))
-        if('context' in link) item.append(element('span',String(link.context),'bl-context'))
+        if('context' in link) item.append(element('span',String(link.context).replace(/<br\s*\/?>/gi,'\n'),'bl-context'))
         item.onclick=()=>void openFileFn?.(link.path,{line:link.line}); host.append(item)
       }
     }
