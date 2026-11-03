@@ -5,6 +5,9 @@ export type PaneKey = 'sidebar' | 'editor' | 'preview' | 'outline' | (string & {
 export interface UiState {
   theme: ThemePref
   /** preview/editor base font multiplier */
+  readingWidth: number
+  readingFit: boolean
+  readingPadding: number
   fontScale: number
   /** dim everything except the active block */
   focusMode: boolean
@@ -24,6 +27,9 @@ const KEY = 'mdr.ui.v1'
 
 const DEFAULTS: UiState = {
   theme: 'auto',
+  readingWidth: 1000,
+  readingFit: false,
+  readingPadding: 24,
   fontScale: 1,
   focusMode: false,
   typewriter: false,
@@ -50,6 +56,9 @@ function load(): UiState {
       scrollByPath: p.scrollByPath ?? {},
       sidebarTab: p.sidebarTab === 'recent' || p.sidebarTab === 'tags' ? p.sidebarTab : 'files',
       fontScale: typeof p.fontScale === 'number' ? Math.min(1.6, Math.max(0.8, p.fontScale)) : 1,
+      readingWidth: Number.isFinite(p.readingWidth) ? Math.round(Math.min(1600, Math.max(640, p.readingWidth!))) : 1000,
+      readingFit: p.readingFit === true,
+      readingPadding: Number.isFinite(p.readingPadding) ? Math.round(Math.min(64, Math.max(12, p.readingPadding!))) : 24,
       focusMode: p.focusMode === true,
       typewriter: p.typewriter === true,
     }

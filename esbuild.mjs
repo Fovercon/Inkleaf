@@ -21,7 +21,7 @@ await build({
 // renderer: ESM with code splitting so mermaid / code languages load lazily
 await build({
   ...common,
-  entryPoints: { renderer: 'src/renderer/src/main.ts' },
+  entryPoints: { renderer: 'src/renderer/src/main.ts', 'diagram-worker': 'src/renderer/src/diagram-worker.ts' },
   outdir: path.join(OUT, 'renderer'),
   format: 'esm',
   platform: 'browser',
@@ -35,6 +35,7 @@ await build({
 await cp('src/renderer/index.html', path.join(OUT, 'renderer', 'index.html'))
 await cp('src/renderer/plugin-sandbox.html', path.join(OUT, 'renderer', 'plugin-sandbox.html'))
 await cp('src/renderer/plugin-sandbox.mjs', path.join(OUT, 'renderer', 'plugin-sandbox.mjs'))
+await cp('resources/licenses', path.join(OUT, 'licenses'), { recursive: true })
 await cp('build/inkleaf-icon.png', path.join(OUT, 'icon.png'))
 if (process.platform === 'darwin') {
   execFileSync('/usr/bin/xcrun', ['clang', '-arch', 'arm64', '-mmacosx-version-min=11.0', '-O2', '-Wall', '-Wextra', '-Wno-deprecated-declarations',

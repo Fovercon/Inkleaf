@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; frame-src inkplug:; style-src 'self' 'unsafe-inline'; img-src 'self' mdasset: data: blob: https:; font-src 'self'; connect-src 'self' mdasset:; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; frame-src inkplug:; style-src 'self' 'unsafe-inline'; img-src 'self' mdasset: data: blob: https:; font-src 'self'; connect-src 'self' mdasset:; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <title>墨页 · Inkleaf</title>
 <link rel="stylesheet" href="./renderer.css" />
 </head>
@@ -48,6 +48,8 @@
     </div>
     <span class="tb-sep"></span>
     <button id="btn-theme" title="切换主题：跟随系统 / 暖白 / 羊皮纸 / 护眼绿 / 深色" aria-label="切换主题" class="tb"><svg class="icon"><use href="#i-theme"/></svg></button>
+    <button id="btn-ai-reader" title="选文助手：解释、翻译与总结" aria-label="选文助手：解释、翻译与总结" class="tb"><span>助手</span></button>
+    <button id="btn-reading-settings" title="阅读排版：宽度与留白" aria-label="阅读排版：宽度与留白" class="tb"><span>排版</span></button>
     <button id="btn-tools" title="创作与知识工具" aria-label="创作与知识工具" class="tb"><svg class="icon"><use href="#i-edit"/></svg></button>
     <button id="btn-plugins" title="插件中心" aria-label="插件中心" class="tb"><svg class="icon"><use href="#i-plugins"/></svg></button>
     <button id="btn-updates" title="检查更新" aria-label="检查软件更新" class="tb"><svg class="icon"><use href="#i-update"/></svg></button>

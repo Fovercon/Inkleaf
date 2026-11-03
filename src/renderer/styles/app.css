@@ -1338,3 +1338,23 @@ button.pc-name { border: none; background: none; padding: 0; text-align: left; f
 }
 
 button.tab-close { font: inherit; border: 0; background: transparent; padding: 0; }
+
+/* Intrinsic link/context widths must never participate in the workspace row size. */
+#right-panes { flex: 0 0 auto; max-width: min(420px, 38vw); overflow: hidden; }
+#right-panes > aside { width: 100%; min-width: 0; max-width: 100%; }
+#backlink-list { min-width: 0; overflow-x: hidden; }
+button.backlink-item { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.backlink-item strong { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backlink-item .bl-context { max-width: 100%; overflow-wrap: anywhere; }
+#doc-wrap { min-width: min(240px, 45vw); }
+#preview-pane { min-width: min(160px, 30vw); }
+
+.model-selection { max-height: 160px; overflow: auto; margin: 8px 0 16px; padding: 12px 16px; border-left: 3px solid var(--accent); background: var(--bg-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.model-result { min-height: 120px; max-height: 42vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 16px; border: 1px solid var(--border); border-radius: 8px; user-select: text; }
+.tool-field input[type="range"] { width: 100%; }
+.tool-field input[type="checkbox"] { width: auto; }
+.tool-field output { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+.tool-field input[type="range"], .tool-field input[type="checkbox"] { accent-color: var(--accent); }
+
+#btn-ai-reader, #btn-reading-settings { width: auto; min-width: 42px; padding: 0 7px; flex-shrink: 0; white-space: nowrap; font-size: 12px; }

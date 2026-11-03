@@ -27,7 +27,11 @@ function details(raw: PluginDetails): PluginDetails {
   if (Array.isArray(raw.changelog)) result.changelog = raw.changelog.filter(x => x && typeof x.version === 'string' && typeof x.notes === 'string').slice(0, 64)
   return result
 }
-function entry(id: string) { return catalog.entries.find(p => p.id === id) }
+// Keep the remote directory compatible with older clients; new built-ins come from this app.
+function directory(): (CatalogEntry | PluginSnapshot)[] {
+  return [...catalog.entries, ...pluginSnapshot().filter(p => p.bundled && !catalog.entries.some(c => c.id === p.id))]
+}
+function entry(id: string) { return directory().find(p => p.id === id) }
 function installed(id: string) { return pluginSnapshot().find(p => p.id === id) }
 function update(p: PluginSnapshot) { const c = entry(p.id); return c && comparePluginVersions(c.version, p.version) === 1 ? c : undefined }
 function status(message: string, error = false) {
@@ -83,7 +87,7 @@ function renderPlugins(): void {
   if (!host) return
   const focus = captureFocus(), focusedInList = host.contains(document.activeElement), scroll = host.scrollTop
   const plugins = pluginSnapshot().sort((a, b) => Number(b.bundled) - Number(a.bundled) || a.id.localeCompare(b.id))
-  const source: (PluginSnapshot | CatalogEntry)[] = view === 'discover' ? catalog.entries : view === 'updates' ? plugins.filter(p => update(p)) : plugins
+  const source: (PluginSnapshot | CatalogEntry)[] = view === 'discover' ? directory() : view === 'updates' ? plugins.filter(p => update(p)) : plugins
   const query = (document.getElementById('pc-search') as HTMLInputElement).value.trim().toLocaleLowerCase()
   const category = (document.getElementById('pc-category') as HTMLSelectElement).value
   const filtered = source.filter(p => {
@@ -100,7 +104,7 @@ function renderPlugins(): void {
   }
   host.scrollTop = scroll; host.setAttribute('aria-busy', String(busy))
   document.getElementById('pc-summary')!.textContent = `${filtered.length} 个插件${view === 'installed' ? ` · ${plugins.filter(p => p.state === 'active').length} 个运行中` : ''}`
-  for (const [key, count] of [['installed', plugins.length], ['discover', catalog.entries.length], ['updates', plugins.filter(p => update(p)).length]] as const) document.getElementById('pc-count-' + key)!.textContent = String(count)
+  for (const [key, count] of [['installed', plugins.length], ['discover', directory().length], ['updates', plugins.filter(p => update(p)).length]] as const) document.getElementById('pc-count-' + key)!.textContent = String(count)
   document.querySelectorAll<HTMLButtonElement>('[data-view]').forEach(btn => { btn.classList.toggle('selected', btn.dataset.view === view); btn.setAttribute('aria-pressed', String(btn.dataset.view === view)) })
   document.querySelectorAll<HTMLButtonElement>('.pc-footer button').forEach(btn => { btn.disabled = busy })
   renderDetail()
@@ -172,7 +176,7 @@ function renderDetail() {
     ${d.minAppVersion ? `<p class="pc-meta">需要墨页 ${e(d.minAppVersion)} 或更新版本</p>` : ''}
     <div class="pc-detail-actions">${p && !p.bundled ? `<button class="pc-btn" id="pc-local-update" ${busy ? 'disabled' : ''}>从文件夹更新…</button>` : ''}${p && update(p) && !p.bundled ? `<button class="pc-btn primary" id="pc-upgrade" ${busy ? 'disabled' : ''}>更新至 ${e(c!.version)}</button>` : !p && !info.bundled ? `<button class="pc-btn primary" id="pc-upgrade" ${busy ? 'disabled' : ''}>安装插件</button>` : ''}</div>
     ${p?.bundled ? '<p class="pc-meta">内置插件随墨页更新。</p>' : ''}${p && update(p) ? `<p class="pc-update-badge">目录最新版本：${e(c!.version)}${p.bundled ? '，请更新墨页软件获取。' : ''}</p>` : ''}
-    ${p && !c ? '<p class="pc-meta">此插件不在官方目录中，请从作者处获取新版。</p>' : ''}</div>
+    ${p && !c && !p.bundled ? '<p class="pc-meta">此插件不在官方目录中，请从作者处获取新版。</p>' : ''}</div>
     <div class="pc-detail-tabs" role="tablist" aria-label="插件详情栏目">${([['about', '介绍'], ['examples', '使用示例'], ['versions', '版本记录']] as const).map(([key, label]) => `<button id="pc-tab-${key}" role="tab" aria-selected="${tab === key}" aria-controls="pc-detail-content" tabindex="${tab === key ? 0 : -1}" data-tab="${key}">${label}</button>`).join('')}</div>
     <div id="pc-detail-content" role="tabpanel" aria-labelledby="pc-tab-${tab}">${tab === 'about' ? `<h3>如何使用</h3><p class="pc-usage">${e(d.usage || '作者尚未提供使用说明。启用后可使用插件提供的预览扩展或命令。')}</p><h3>权限说明</h3><p>${info.permissions.includes('render') ? '处理文档预览：插件能接收渲染后的文档内容并返回显示结果。' : ''}${info.permissions.includes('commands') ? ' 提供命令：插件可以向命令面板添加操作。' : ''}${info.permissions.length ? '' : '此插件未声明额外权限。'}</p><p class="pc-meta">外部插件在隔离环境运行。安装完成后由你选择是否启用。</p>` : tab === 'versions' ? versions.length ? versions.map(v => `<article class="pc-version"><h3>v${e(v.version)}</h3><p>${e(v.notes)}</p></article>`).join('') : '<p class="pc-empty">作者尚未提供版本记录。</p>' : examples.length ? examples.map((x, index) => `<article class="pc-example"><div><h3>${e(x.title)}</h3><button class="pc-btn" data-copy="${index}">复制写法</button></div><pre><code>${e(x.markdown.slice(0, 12000))}</code></pre><div class="pc-example-preview md-preview">${DOMPurify.sanitize(exampleMd.render(x.markdown.slice(0, 12000)), { ADD_ATTR: ['data-callout-title'], FORBID_TAGS: ['img', 'iframe', 'video', 'audio', 'source', 'style'] })}</div></article>`).join('') : '<p class="pc-empty">此插件无需特殊语法，启用后自动生效。作者未提供可复制示例。</p>'}</div>`
   host.scrollTop = oldScroll

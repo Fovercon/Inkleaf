@@ -11,6 +11,8 @@ export interface PanelDef {
   id: PaneKey | string
   slot: PanelSlot
   el: HTMLElement
+  /** Shared rails resize their container, while each aside keeps its collapse state. */
+  widthTarget?: HTMLElement
   resizer: HTMLElement
   min: number
   max: number
@@ -48,19 +50,20 @@ export function attachPanelResizers(
     p.resizer.addEventListener('pointerdown', (e) => {
       e.preventDefault()
       const startX = e.clientX
-      const startW = p.el.getBoundingClientRect().width
+      const target = p.widthTarget ?? p.el
+      const startW = target.getBoundingClientRect().width
       p.resizer.setPointerCapture(e.pointerId)
       p.resizer.classList.add('active')
       const move = (ev: PointerEvent) => {
-        const w = Math.round(Math.min(p.max, Math.max(p.min, startW + ev.clientX - startX)))
-        p.el.style.width = `${w}px`
+        const w = Math.round(Math.min(p.max, Math.max(p.min, startW + (p.slot === 'right' ? -1 : 1) * (ev.clientX - startX))))
+        target.style.width = `${w}px`
       }
       const up = () => {
         p.resizer.releasePointerCapture(e.pointerId)
         p.resizer.removeEventListener('pointermove', move)
         p.resizer.removeEventListener('pointerup', up)
         p.resizer.classList.remove('active')
-        writeWidth(p.id, Math.round(p.el.getBoundingClientRect().width))
+        writeWidth(p.id, Math.round(target.getBoundingClientRect().width))
         onEnd()
       }
       p.resizer.addEventListener('pointermove', move)

@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { registerIpc, rebuildDockMenu, stopWatch, flushSessionWrites } from './ipc'
 import { handleLocalAsset } from './local-assets'
 import { registerPluginIpc, resolvePluginFile } from './plugins-host'
+import { registerServiceIpc } from './services-host'
 import { initializeUpdater } from './updater'
 import { markdownFromArguments } from './openPath'
 import { appImageTarget } from './linuxAppImage'
@@ -122,6 +123,7 @@ if (!gotLock) {
     })
     registerIpc()
     registerPluginIpc()
+    registerServiceIpc()
     if (process.env.MDR_TEST) void writeSamplePlugin()
     initializeUpdater()
     buildMenu()
@@ -527,6 +529,7 @@ async function createWindow() {
             const footnotes = document.querySelector('#preview .footnotes, #preview section.footnotes')
             const deflist = document.querySelector('#preview dl')
             const mermaidBlocks = document.querySelectorAll('#preview .mermaid-block').length
+            const graphviz = [...document.querySelectorAll('#preview .code-diagram svg text')].some(node => node.textContent === 'Start')
             return JSON.stringify({
               callout: !!callout,
               title: callout?.getAttribute('data-callout-title') ?? null,
@@ -534,13 +537,13 @@ async function createWindow() {
               footnote: !!footnoteRef,
               footnotes: !!footnotes,
               deflist: !!deflist,
-              mermaid: mermaidBlocks,
+              mermaid: mermaidBlocks, graphviz,
             })
           })()
         `)
         const rc = JSON.parse(renderCheck)
-        console.log(`[render-check] callout=${rc.callout} title=${rc.title} warning=${rc.warning} footnote=${rc.footnote}/${rc.footnotes} deflist=${rc.deflist} mermaid=${rc.mermaid} ${rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist && rc.mermaid >= 2 ? 'OK' : 'FAIL'}`)
-        assertUiCheck('render', rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist && rc.mermaid >= 2, rc)
+        console.log(`[render-check] callout=${rc.callout} title=${rc.title} warning=${rc.warning} footnote=${rc.footnote}/${rc.footnotes} deflist=${rc.deflist} mermaid=${rc.mermaid} graphviz=${rc.graphviz} ${rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist && rc.mermaid >= 2 && rc.graphviz ? 'OK' : 'FAIL'}`)
+        assertUiCheck('render', rc.callout && rc.warning && rc.footnote && rc.footnotes && rc.deflist && rc.mermaid >= 2 && rc.graphviz, rc)
         // focus & typewriter mode check
         const focusCheck = await win.webContents.executeJavaScript(`
           (async () => {

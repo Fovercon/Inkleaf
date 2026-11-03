@@ -208,6 +208,11 @@ interface LastRender {
 
 let last: LastRender | null = null
 let renderSeq = 0
+const renderedListeners = new Set<(container: HTMLElement, filePath: string | null) => void>()
+export function onPreviewRendered(listener: (container: HTMLElement, filePath: string | null) => void): () => void {
+  renderedListeners.add(listener)
+  return () => { renderedListeners.delete(listener) }
+}
 
 /** Close-file transitions invalidate every pending render and theme callback. */
 export function clearPreview(container: HTMLElement) {
@@ -220,6 +225,7 @@ export function clearPreview(container: HTMLElement) {
 export async function renderPreview(scroller: HTMLElement, container: HTMLElement, text: string, filePath: string | null) {
   ensurePipeline()
   const seq = ++renderSeq
+  last = { container, scroller, text, filePath }
   const big = text.length > 20000
   const t0 = big ? performance.now() : 0
   const images = prepareImageMarkup(md.render(text))
@@ -257,7 +263,8 @@ export async function renderPreview(scroller: HTMLElement, container: HTMLElemen
     }
   }
 
-  last = { container, scroller, text, filePath }
+  if (seq !== renderSeq) return
+  for (const listener of renderedListeners) { try { listener(container, filePath) } catch (error) { console.error(error) } }
   if (big) {
     const t4 = performance.now()
     console.log(
@@ -279,8 +286,10 @@ onThemeChange(async () => {
   const mermaid = await getMermaid()
   if (last !== previous || renderSeq !== seq) return
   mermaid.initialize(mermaidInitOptions())
-  await renderPreview(scroller, container, text, filePath)
-  scroller.scrollTop = scroll
+  const render = renderPreview(scroller, container, text, filePath)
+  const themeSeq = renderSeq
+  await render
+  if (renderSeq === themeSeq) scroller.scrollTop = scroll
 })
 
 export function handleLinkClick(scroller: HTMLElement, container: HTMLElement, onOpenMd: (path: string) => void) {
