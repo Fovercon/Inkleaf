@@ -55,7 +55,7 @@ export interface ImageResolution {
 // ---------- 通道名 ----------
 
 export const CH = {
-  serviceGet: 'services:get', serviceSave: 'services:save', diagramRender: 'services:diagram',
+  serviceGet: 'services:get', serviceSave: 'services:save', diagramRender: 'services:diagram', diagramTest: 'services:test-diagram',
   modelRun: 'services:model', modelCancel: 'services:cancel', modelChunk: 'services:chunk',
   // invoke（renderer -> main）
   dialogOpenFolder: 'dialog:openFolder',

@@ -9,7 +9,7 @@ import path from 'node:path'
 import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto'
 const require = createRequire(import.meta.url), temp = await mkdtemp(path.join(tmpdir(), 'inkleaf-service-store-'))
 const encryptionKey = randomBytes(32), handlers = new Map(), chunks = []
-const frame = { url: 'app://local/index.html' }, event = { senderFrame: frame, sender: { id: 1, mainFrame: frame, once() {}, removeListener() {}, isDestroyed: () => false, send: (_, value) => chunks.push(value) } }
+const frame = { url: 'app://local/index.html' }, event = { senderFrame: frame, sender: { id: 1, mainFrame: frame, once() {}, on() {}, removeListener() {}, isDestroyed: () => false, send: (_, value) => chunks.push(value) } }
 let available = true, encrypted = 0, decrypted = 0, auth
 const api = {
   app: { isPackaged: true, getPath: () => temp },
@@ -35,6 +35,12 @@ try {
   globalThis.fetch = async (_url, options) => { auth=options.headers.Authorization; return new Response(JSON.stringify({choices:[{message:{content:'test output'}}]}),{headers:{'Content-Type':'application/json'}}) }
   assert.equal(await invoke('model',{id:'request-123',action:'explain',text:'selection'}),'test output');assert.equal(auth,'Bearer synthetic-secret')
   console.log('PASS encrypted settings use the vault, remain private, and survive restart')
+  await invoke('save',{...settings,scope:'diagram',plantumlUrl:'https://kroki.io',diagramProvider:'kroki',endpoint:'https://stale.example/v1',provider:'ollama',model:'stale',clearKey:true})
+  const afterDiagram = await invoke('get');assert.equal(afterDiagram.endpoint,settings.endpoint);assert.equal(afterDiagram.provider,'compatible');assert.equal(afterDiagram.hasKey,true);assert.equal(afterDiagram.diagramProvider,'kroki')
+  await invoke('save',{...settings,scope:'model',model:'updated',plantumlUrl:'https://stale.example/plantuml'})
+  const afterModel=await invoke('get');assert.equal(afterModel.plantumlUrl,'https://kroki.io');assert.equal(afterModel.diagramProvider,'kroki');assert.equal(afterModel.model,'updated');assert.equal(afterModel.hasKey,true)
+  restart();assert.equal((await invoke('get')).diagramProvider,'kroki');assert.equal((await invoke('get')).hasKey,true)
+  console.log('PASS independent settings scopes preserve unrelated configuration and encrypted credentials across restart')
   await writeFile(path.join(temp,'services.json'),JSON.stringify({...JSON.parse(disk),endpoint:'https://another.example/v1'}));restart();assert.equal((await invoke('get')).hasKey,false)
   console.log('PASS encrypted key is bound to the original provider and endpoint')
   available=false;await invoke('save',{...settings,key:'session-secret',rememberKey:true});assert.equal((await invoke('get')).keyStorage,'session');assert.ok(!(await readFile(path.join(temp,'services.json'),'utf8')).includes('session-secret'));restart();assert.equal((await invoke('get')).hasKey,false)

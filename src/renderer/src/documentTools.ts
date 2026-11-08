@@ -3,6 +3,7 @@ import { element, input, toolDialog } from './toolDialog'
 
 export interface DocumentToolsContext {
   selection(): { from: number; to: number }
+  selectionRect?(): { left: number; top: number; bottom: number } | null
   open(path: string, line?: number): Promise<unknown>
   edit(path: string, expected: string, next: string): Promise<void>
   path(): string | null
