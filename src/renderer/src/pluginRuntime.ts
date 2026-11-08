@@ -7,6 +7,7 @@ import {
   type RenderContext,
 } from './pipeline'
 import { createPluginSandbox, sanitizePluginHtml, type PluginSandbox, type ExternalRegistration } from './externalPlugin'
+import { createModelSession } from './modelClient'
 
 interface PluginRecord {
   id: string
@@ -40,6 +41,11 @@ function remember(id: string, enabled?: boolean) {
   try { localStorage.setItem(PREFERENCES_KEY, JSON.stringify(Object.fromEntries(next))) }
   catch { throw new Error('无法保存插件设置，请检查磁盘空间后重试') }
   preferences = next
+}
+/** One-time split of a bundled feature: preserve an explicit legacy opt-out. */
+export function inheritPluginOptOut(previous: string, ids: string[]) {
+  if (preferences.get(previous) !== false) return
+  for (const id of ids) if (!preferences.has(id)) remember(id, false)
 }
 
 export interface PluginSnapshot extends PluginDetails {
@@ -140,6 +146,23 @@ class InkApi {
   readonly version = '0.4.0'
   constructor(private rec: PluginRecord, private epoch: number) {}
   get commands() { return { register: (def: CommandDef) => addCommand(this.rec, this.epoch, def) } }
+  /** Trusted bundled SDK only. External sandboxes have no model bridge. */
+  get model() {
+    return { createSession: () => {
+      permit(this.rec, 'model', this.epoch)
+      const session = createModelSession()
+      const release = () => {
+        session.dispose()
+        const index = this.rec.deactivators.indexOf(release)
+        if (index >= 0) this.rec.deactivators.splice(index, 1)
+      }
+      this.rec.deactivators.push(release)
+      return {
+        run: (...args: Parameters<typeof session.run>) => { permit(this.rec, 'model', this.epoch); return session.run(...args) },
+        cancel: () => session.cancel(), dispose: release,
+      }
+    } }
+  }
   get pipeline() {
     const rec = this.rec, epoch = this.epoch
     return {

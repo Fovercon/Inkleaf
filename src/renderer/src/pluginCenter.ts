@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify'
 import { calloutMarkdown } from './bundled-callout'
 
 const STATE_LABEL: Record<PluginSnapshot['state'], string> = { registered: '待启用', activating: '启用中', active: '运行中', disabled: '已停用', error: '出错' }
-const PERMISSION_LABEL: Record<string, string> = { commands: '提供命令', render: '处理文档预览' }
+const PERMISSION_LABEL: Record<string, string> = { commands: '提供命令', render: '处理文档预览', model: '使用共用模型连接' }
 type View = 'installed' | 'discover' | 'updates'
 type DetailTab = 'about' | 'examples' | 'versions'
 let subscribed = false, busy = false

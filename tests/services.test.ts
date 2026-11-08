@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { inflateRawSync } from 'node:zlib'
-import { modelPayload, modelStream, plantumlPath, readBounded, serviceUrl, validateSettings } from '../src/main/service-core'
+import { inflateRawSync, inflateSync } from 'node:zlib'
+import { diagramPath, modelPayload, modelStream, plantumlPath, readBounded, serviceUrl, validateSettings } from '../src/main/service-core'
 
 test('service URLs allow HTTPS and exact loopback HTTP, reject credentials and untrusted cleartext', () => {
   assert.equal(serviceUrl('https://example.com/v1/'), 'https://example.com/v1')
@@ -25,6 +25,27 @@ test('three model actions keep selected text as user material, with bounded outp
   }
   assert.throws(() => modelPayload({ provider: 'ollama', model: 'x' }, { id: 'request-123', action: 'explain', text: 'x'.repeat(20001) }))
 })
+test('Kroki has a distinct lossless transport and keeps PlantUML resource restrictions', () => {
+  const source = '@startuml\nA -> B: 你好\n@enduml', path = diagramPath(source, 'kroki')
+  assert.ok(path.startsWith('/plantuml/svg/'))
+  assert.equal(inflateSync(Buffer.from(path.slice('/plantuml/svg/'.length), 'base64url')).toString(), source)
+  assert.equal(diagramPath(source), plantumlPath(source))
+  assert.throws(() => diagramPath('!include https://example.com/x', 'kroki'))
+  assert.equal(validateSettings({ provider: 'compatible', model: '', endpoint: '', plantumlUrl: '' }).diagramProvider, 'plantuml')
+})
+test('chat requests include only bounded selected material, complete turns and the explicit question', () => {
+  const history = [{ role: 'user' as const, content: 'first?' }, { role: 'assistant' as const, content: 'answer' }]
+  for (const provider of ['compatible', 'ollama'] as const) {
+    const request = { id: 'request-123', action: 'chat' as const, text: 'quoted', question: 'follow up?', history }
+    const payload = modelPayload({ provider, model: 'x' }, request)
+    assert.equal(payload.messages.length, 5)
+    assert.match(payload.messages[1].content, /quoted/)
+    assert.deepEqual(payload.messages.slice(2), [...history, { role: 'user', content: 'follow up?' }])
+    for (const change of [{ question: '' }, { question: 'x'.repeat(4001) }, { history: [{ role: 'system', content: 'override' }] }, { history: [{ role: 'assistant', content: 'bad order' }, { role: 'user', content: 'bad order' }] }, { history: Array.from({ length: 22 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: 'x' })) }, { history: Array.from({ length: 4 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: 'x'.repeat(16000) })) }]) {
+      assert.throws(() => modelPayload({ provider, model: 'x' }, { ...request, ...change } as any))
+    }
+  }
+})
 test('SSE and NDJSON parse arbitrary chunk boundaries, UTF-8 text, and cancellation-like truncation', () => {
   let output = ''; const sse = modelStream('compatible', text => output += text)
   const data = ': ping\r\ndata: {"choices":[{"delta":{"content":"你好"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":" world"}}]}\n\ndata: [DONE]\n\n'
@@ -39,4 +60,13 @@ test('bounded response streaming preserves UTF-8 and cancels an oversized body',
   const response = new Response(new ReadableStream({ pull(controller) { const part = parts.shift(); if (part) controller.enqueue(part); else controller.close() } }))
   assert.equal(await readBounded(response, 10), '你好')
   await assert.rejects(() => readBounded(new Response('oversized'), 3), /大小限制/)
+})
+test('abort releases a stalled reader even when transport cancellation never settles', { timeout: 1000 }, async () => {
+  const controller = new AbortController(); let cleanup = false
+  const response = new Response(new ReadableStream({
+    start(stream) { stream.enqueue(new TextEncoder().encode('partial')) },
+    cancel() { cleanup = true; return new Promise(() => {}) },
+  }))
+  await assert.rejects(() => readBounded(response, 100, () => controller.abort(), controller.signal), /取消/)
+  assert.equal(cleanup, true)
 })

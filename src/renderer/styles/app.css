@@ -1349,8 +1349,6 @@ button.backlink-item { min-width: 0; max-width: 100%; white-space: normal; overf
 #doc-wrap { min-width: min(240px, 45vw); }
 #preview-pane { min-width: min(160px, 30vw); }
 
-.model-selection { max-height: 160px; overflow: auto; margin: 8px 0 16px; padding: 12px 16px; border-left: 3px solid var(--accent); background: var(--bg-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
-.model-result { min-height: 120px; max-height: 42vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; padding: 16px; border: 1px solid var(--border); border-radius: 8px; user-select: text; }
 .tool-field input[type="range"] { width: 100%; }
 .tool-field input[type="checkbox"] { width: auto; }
 .tool-field output { font-variant-numeric: tabular-nums; color: var(--text-dim); }
@@ -1358,3 +1356,56 @@ button.backlink-item { min-width: 0; max-width: 100%; white-space: normal; overf
 .tool-field input[type="range"], .tool-field input[type="checkbox"] { accent-color: var(--accent); }
 
 #btn-ai-reader, #btn-reading-settings { width: auto; min-width: 42px; padding: 0 7px; flex-shrink: 0; white-space: nowrap; font-size: 12px; }
+
+/* Shared model capabilities, anchored translation and conversational reading. */
+#btn-model-settings { width: auto; min-width: 42px; padding: 0 7px; flex-shrink: 0; white-space: nowrap; font-size: 12px; }
+.selection-actions, .translation-popover { position: fixed; z-index: 110; border: 1px solid var(--border); background: var(--panel); color: var(--text); border-radius: 12px; box-shadow: 0 12px 40px #0002; }
+.selection-actions { display: flex; gap: 4px; padding: 5px; max-width: calc(100vw - 24px); flex-wrap: wrap; align-items: center; }
+.selection-actions button, .model-surface-actions button, .model-surface-header button { border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--text); padding: 6px 9px; cursor: pointer; font: 12px/1.5 var(--font-ui); white-space: nowrap; }
+.selection-actions button:hover, .model-surface-actions button:hover, .model-surface-header button:hover { background: var(--accent-soft); border-color: var(--border); }
+.selection-actions button:first-child, .model-surface-actions button:first-child { background: var(--accent); color: var(--accent-text, #fff); }
+.model-surface-actions button:disabled, .model-surface-header button:disabled { opacity: .45; cursor: default; }
+.translation-popover { width: 370px; max-width: calc(100vw - 24px); max-height: min(560px, calc(100vh - 24px)); overflow: auto; padding: 16px; font: 13px/1.65 var(--font-ui); }
+.model-surface-header { display: flex; align-items: center; gap: 6px; }
+.model-surface-header > strong, .model-surface-header > div { flex: 1; min-width: 0; }
+.model-surface-header strong { font: 600 16px/1.6 var(--font-serif); }
+.model-surface-header small { display: block; font-size: 11px; color: var(--text-dim); }
+.model-connection { margin: 6px 0 12px; color: var(--text-dim); font-size: 11px; overflow-wrap: anywhere; }
+.model-source { font-size: 12px; color: var(--text-dim); border-left: 2px solid var(--accent); padding: 2px 10px; margin: 12px 0; }
+.model-source summary { cursor: pointer; overflow-wrap: anywhere; }
+.model-source blockquote { margin: 8px 0; max-height: 140px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.translation-result { min-height: 60px; max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; padding: 12px 0; user-select: text; }
+.translation-popover select { max-width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px; }
+.model-surface-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+.model-surface-actions button { border-color: var(--border); }
+.model-status { color: var(--text-dim); font-size: 11px; line-height: 1.6; margin: 10px 0 0; overflow-wrap: anywhere; }
+.ai-chat-panel { position: fixed; right: 0; top: 60px; bottom: 30px; width: min(420px, 42vw); display: flex; flex-direction: column; min-width: 0; z-index: 40; background: var(--panel); border-left: 1px solid var(--border); padding: 16px; color: var(--text); }
+body.ai-chat-open #workspace { margin-right: min(420px, 42vw); }
+.ai-chat-panel > .model-source { flex: none; }
+.model-messages { flex: 1; min-height: 80px; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 4px 0 12px; user-select: text; }
+.model-message { margin: 12px 0 18px; overflow-wrap: anywhere; }
+.model-message > small { color: var(--accent); font-size: 11px; letter-spacing: .06em; }
+.model-message.user p { margin: 6px 0; padding: 10px 12px; border-radius: 8px; background: var(--bg); white-space: pre-wrap; font-size: 13px; }
+.model-answer.md-preview { padding: 0; margin: 6px 0 0; max-width: 100%; font-size: 14px; line-height: 1.8; }
+.model-answer pre { max-width: 100%; overflow: auto; }
+.model-answer table { display: block; max-width: 100%; overflow: auto; }
+.model-answer .model-image-load { display: block; width: 100%; margin: 12px 0; padding: 12px; border: 1px dashed var(--border); background: var(--bg); color: var(--text); border-radius: 8px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.model-image-load small { display: block; font-size: 11px; color: var(--text-dim); }
+.model-message.incomplete { border-left: 2px dashed var(--border); padding-left: 10px; }
+.model-composer { flex: none; border-top: 1px solid var(--border); padding-top: 12px; }
+.model-composer textarea { display: block; width: 100%; min-height: 76px; max-height: 160px; resize: vertical; border: 1px solid var(--border); border-radius: 8px; padding: 10px; font: 13px/1.65 var(--font-ui); background: var(--bg); color: var(--text); }
+@media (max-width: 900px) {
+  body.ai-chat-open #workspace { margin-right: 0; }
+  .ai-chat-panel { width: min(420px, 100vw); box-shadow: -10px 0 35px #0002; }
+}
+
+body[data-theme="dark"] .selection-actions button:first-child, body[data-theme="dark"] .model-surface-actions button:first-child { color: #1d2420; }
+
+@media (max-width: 900px) {
+  .app-brand > span { display: none; }
+  .app-brand { border-right: none; padding-right: 0; }
+  #file-title { display: none; }
+  #titlebar { gap: 6px; padding-right: 10px; }
+  #toolbar { min-width: 0; flex-shrink: 1; overflow-x: auto; scrollbar-width: none; }
+  #toolbar > * { flex-shrink: 0; }
+}

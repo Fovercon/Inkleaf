@@ -24,6 +24,7 @@ import { TabManager, type DocSession } from './docSession'
 import { bootPlugins, onPluginStateChange, pluginSnapshot } from './pluginRuntime'
 import { openPluginCenter, setupPluginCenter } from './pluginCenter'
 import { registerModelPlugin } from './modelReader'
+import { openServiceSettings } from './serviceSettings'
 import { registerDiagramPlugins } from './diagrams'
 import { registerCalloutPlugin } from './bundled-callout'
 import { openHistory, openProperties, type DocumentToolsContext } from './documentTools'
@@ -115,7 +116,12 @@ function registerBuiltinPanels() {
   })
 }
 
+let modelDocument: string | null | undefined
 function applyLayout() {
+  if (modelDocument !== runtime.currentFile) {
+    modelDocument = runtime.currentFile
+    window.dispatchEvent(new Event('inkleaf-document-changed'))
+  }
   const s = getState()
   const collapsed = (id: string) => !!s.collapsed[id]
   editorPane.classList.toggle('pane-collapsed', collapsed('editor'))
@@ -863,6 +869,7 @@ async function closeLibrary() {
 
 const documentTools: DocumentToolsContext = {
   selection: () => editor.sourceSelection(),
+  selectionRect: () => editor.view?.coordsAtPos(editor.sourceSelection().to) ?? null,
   open: (path, line) => openFile(path, { line }),
   edit: (path, expected, next) => serializeNavigation(async () => {
     if (editor.currentPath !== path || editor.getContent() !== expected) throw new Error('文档已变化，请重新打开工具')
@@ -890,9 +897,11 @@ const documentTools: DocumentToolsContext = {
 }
 function openDocumentTools() {
   const d = toolDialog('创作与知识工具'); d.body.classList.add('tool-menu')
-  d.button('解释选中文字', () => { d.dialog.close(); runCommand('bundled.ai-reader.explain') }, d.body)
-  d.button('翻译选中文字', () => { d.dialog.close(); runCommand('bundled.ai-reader.translate') }, d.body)
-  d.button('总结选中文字', () => { d.dialog.close(); runCommand('bundled.ai-reader.summarize') }, d.body)
+  d.button('模型连接', () => { d.dialog.close(); openServiceSettings('model') }, d.body)
+  d.button('图表服务', () => { d.dialog.close(); openServiceSettings('diagram') }, d.body)
+  d.button('解释选中文字', () => { d.dialog.close(); runCommand('bundled.ai-chat.explain') }, d.body)
+  d.button('翻译选中文字', () => { d.dialog.close(); runCommand('bundled.translation.translate') }, d.body)
+  d.button('总结选中文字', () => { d.dialog.close(); runCommand('bundled.ai-chat.summarize') }, d.body)
   d.button('阅读排版', () => { d.dialog.close(); openReadingSettings() }, d.body)
   d.button('插入正文目录', () => { d.dialog.close(); runCommand('insert-toc') }, d.body).disabled = !runtime.currentFile
   d.button('每日笔记', () => { d.dialog.close(); openDaily(documentTools) }, d.body).disabled = !runtime.libraryRoot
@@ -919,6 +928,8 @@ function registerBuiltinCommands() {
   registerCommand({ id: 'rename-tag', title: '标签批量改名…', run: () => openTagRename(documentTools), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'advanced-search', title: '书库搜索与替换…', run: () => openAdvancedSearch(documentTools), when: () => !!runtime.libraryRoot })
   registerCommand({ id: 'document-tools', title: '创作与知识工具…', run: openDocumentTools })
+  registerCommand({ id: 'model-settings', title: '模型连接（应用基础能力）…', run: () => openServiceSettings('model') })
+  registerCommand({ id: 'diagram-settings', title: '图表服务…', run: () => openServiceSettings('diagram') })
   registerCommand({ id: 'document-properties', title: '文档属性…', run: () => openProperties(documentTools), when: () => !!runtime.currentFile })
   registerCommand({ id: 'document-history', title: '文档历史与恢复…', run: () => openHistory(documentTools), when: () => !!runtime.currentFile })
   // 文件
@@ -964,7 +975,8 @@ function registerBuiltinCommands() {
 
 function setupActions() {
   for (const id of ['library-switch', 'empty-switch-library', 'home-switch-library']) $('#'+id).addEventListener('click', () => openLibraries(openLibrary, openFolderAction))
-  $('#btn-ai-reader').addEventListener('click', () => { if (!runCommand('bundled.ai-reader.explain')) openPluginCenter() })
+  $('#btn-ai-reader').addEventListener('click', () => { if (!runCommand('bundled.ai-chat.explain')) openPluginCenter() })
+  $('#btn-model-settings').addEventListener('click', () => openServiceSettings('model'))
   $('#btn-reading-settings').addEventListener('click', openReadingSettings)
   applyReadingSettings()
   $('#btn-tools').addEventListener('click', openDocumentTools)

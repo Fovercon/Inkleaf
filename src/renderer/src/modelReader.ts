@@ -1,105 +1,103 @@
-import { registerBundledPlugin } from './pluginRuntime'
-import { element, toolDialog } from './toolDialog'
-import { openServiceSettings } from './serviceSettings'
+import { registerBundledPlugin, onPluginStateChange, pluginSnapshot, inheritPluginOptOut } from './pluginRuntime'
+import { element } from './toolDialog'
+import { captureModelSelection, placeSelectionSurface, type ModelSelection } from './modelSelection'
+import { surfaceButton as button } from './modelSurface'
+import { translationPopover } from './translation'
+import { modelChatPanel } from './modelChat'
+import { onPreviewRendered } from './preview'
 import type { DocumentToolsContext } from './documentTools'
-import type { ModelAction } from '../../shared/services'
+import type { createModelSession } from './modelClient'
+import { automaticTranslation, openTranslationSettings } from './translationSettings'
 
-const labels: Record<ModelAction, string> = { explain: '解释', translate: '翻译', summarize: '总结' }
-interface Selection { path: string; expected: string; text: string; from: number; to: number; applicable: boolean }
-let lastPreview: Selection | undefined
-function capture(ctx: DocumentToolsContext): Selection | undefined {
-  const selected = window.getSelection(), preview = document.getElementById('preview'), path = ctx.path()
-  if (!path || !selected?.rangeCount || selected.isCollapsed || !preview?.contains(selected.anchorNode) || !preview.contains(selected.focusNode)) return
-  const text = selected.toString().trim(), expected = ctx.content()
-  if (!text) return
-  const from = expected.indexOf(text), unique = from >= 0 && expected.indexOf(text, from + 1) < 0
-  return { path, expected, text, from, to: from + text.length, applicable: unique }
-}
-function selection(ctx: DocumentToolsContext): Selection | undefined {
-  const native = capture(ctx); if (native) return native
-  const path = ctx.path(), expected = ctx.content(), { from, to } = ctx.selection()
-  if (lastPreview?.path === path && lastPreview.expected === expected) return lastPreview
-  if (path && from !== to) return { path, expected, from, to, text: expected.slice(from, to), applicable: true }
-}
-export function openModelReader(ctx: DocumentToolsContext, action: ModelAction = 'explain') {
-  const chosen = selection(ctx), d = toolDialog('选文助手', true)
-  let activeId = '', pending = false, applying = false, output = '', successful = false, disposed = false
-  const actions = element('select'); actions.setAttribute('aria-label', '选文操作')
-  for (const value of ['explain', 'translate', 'summarize'] as const) { const option = element('option', labels[value]); option.value = value; actions.append(option) }
-  actions.value = action
-  const language = element('select'); language.setAttribute('aria-label', '翻译目标语言')
-  for (const lang of ['简体中文', 'English', '日本語', '한국어', 'Français', 'Deutsch', 'Español']) { const option = element('option', lang); option.value = lang; language.append(option) }
-  const row = element('div', '', 'tool-row'); row.append(actions, language); d.body.append(row)
-  const updateLanguage = () => { language.hidden = actions.value !== 'translate' }; actions.onchange = updateLanguage; updateLanguage()
-  const connection = element('p', '正在读取模型配置…', 'tool-hint')
-  const quote = element('blockquote', chosen?.text || '请先在阅读视图或编辑器中选中文字，再打开选文助手。', 'model-selection')
-  const result = element('pre', '', 'model-result'); result.setAttribute('aria-label', '模型结果'); result.setAttribute('aria-live', 'off')
-  d.body.append(connection, quote, result)
-  d.body.append(element('p', '仅发送上方选文。模型生成的内容可能不准确，请核对后使用。', 'tool-hint'))
-  let configured = false
-  void window.mdr.serviceSettings().then(settings => {
-    if (disposed) return
-    configured = !!settings.endpoint && !!settings.model
-    connection.textContent = configured ? `${settings.provider === 'ollama' ? 'Ollama' : '兼容服务'} · ${settings.model} · ${settings.endpoint} · ${chosen?.text.length ?? 0} 字符` : '尚未配置模型连接。请先打开连接设置。'
-    updateControls()
-  }).catch(() => { if (!disposed) connection.textContent = '无法读取模型设置，请重试' })
-  const buttons = element('div', '', 'tool-actions'); d.body.append(buttons)
-  const send = element('button', '发送选文'), cancel = element('button', '取消请求'), settings = element('button', '连接设置'), copy = element('button', '复制结果'), insert = element('button', '插入选文后'), replace = element('button', '替换选文')
-  buttons.append(send, cancel, settings, copy, insert, replace)
-  const updateControls = () => {
-    const busy = pending || applying
-    send.disabled = busy || !configured || !chosen || chosen.text.length > 20000
-    cancel.disabled = !pending; settings.disabled = busy; actions.disabled = busy; language.disabled = busy
-    copy.disabled = !output; insert.disabled = replace.disabled = busy || !successful || !chosen?.applicable
-  }
-  if (chosen && chosen.text.length > 20000) d.status.textContent = '选文超过 20000 个字符，请缩小范围。'
-  else if (chosen && !chosen.applicable) d.status.textContent = '选文无法唯一对应源文位置，可复制结果；如需写回，请在编辑器中重新选择。'
-  const removeListener = window.mdr.onModelChunk(chunk => {
-    if (disposed || !pending || chunk.id !== activeId) return
-    output += chunk.text; result.textContent = output
-  })
-  send.onclick = async () => {
-    if (pending || !chosen || !configured) return
-    pending = true; successful = false; output = ''; result.textContent = ''; d.status.classList.remove('error'); d.status.textContent = '正在生成…'
-    const id = crypto.randomUUID(); activeId = id; updateControls()
-    try {
-      const text = await window.mdr.runModel({ id, action: actions.value as ModelAction, text: chosen.text, language: language.value })
-      if (disposed || activeId !== id) return
-      output = text; result.textContent = text; successful = true; d.status.textContent = '已完成。查看结果后，可复制或写回文档。'
-    } catch (error) { if (!disposed && activeId === id) { d.status.textContent = error instanceof Error ? error.message : '请求失败，请重试'; d.status.classList.add('error') } }
-    finally { if (activeId === id) { pending = false; activeId = ''; if (!disposed) updateControls() } }
-  }
-  cancel.onclick = () => { if (activeId) { d.status.textContent = '正在取消…'; void window.mdr.cancelModel(activeId) } }
-  settings.onclick = () => openServiceSettings('model')
-  copy.onclick = () => { void navigator.clipboard.writeText(output).then(() => { d.status.textContent = '已复制结果' }).catch(() => { d.status.textContent = '无法复制，请手动选择结果复制' }) }
-  const apply = async (replacing: boolean) => {
-    if (!chosen?.applicable || !successful || pending) return
-    applying = true; updateControls()
-    const eol = chosen.expected.includes('\r\n') ? '\r\n' : '\n'
-    const text = output.replace(/\r?\n/g, eol)
-    const next = replacing ? chosen.expected.slice(0, chosen.from) + text + chosen.expected.slice(chosen.to) : chosen.expected.slice(0, chosen.to) + eol + eol + text + chosen.expected.slice(chosen.to)
-    try { await ctx.edit(chosen.path, chosen.expected, next); successful = false; d.status.textContent = '已写入文档，可在文档历史中恢复。' }
-    catch (error) { d.status.textContent = error instanceof Error ? error.message : '写入失败，结果已保留'; d.status.classList.add('error') }
-    finally { applying = false; updateControls() }
-  }
-  insert.onclick = () => void apply(false); replace.onclick = () => void apply(true)
-  d.dialog.addEventListener('close', () => { disposed = true; removeListener(); if (activeId) void window.mdr.cancelModel(activeId) }, { once: true })
-  updateControls()
-}
+const TRANSLATE = 'bundled.translation', CHAT = 'bundled.ai-chat'
+const enabled = (id: string) => pluginSnapshot().some(p => p.id === id && p.state === 'active')
 export function registerModelPlugin(ctx: DocumentToolsContext) {
+  const sessions = new Map<string, () => ReturnType<typeof createModelSession>>()
+  let last: ModelSelection | undefined, toolbar: HTMLElement | undefined
+  let lastAuto: ModelSelection | undefined, dragging = false
+  let popup: { close(): void; path: string } | undefined, chat: { close(): void; path: string } | undefined
+  const clearToolbar = () => { toolbar?.remove(); toolbar = undefined }
+  const chosen = () => last?.path === ctx.path() && last.expected === ctx.content() ? last : captureModelSelection(ctx)
+  const hint = () => {
+    clearToolbar(); const node = element('div', '请先在阅读视图或编辑器中选中文字。', 'selection-actions'); node.setAttribute('role', 'status')
+    document.body.append(node); placeSelectionSurface(node, { left: window.innerWidth / 2, top: 100, bottom: 100 }); toolbar = node
+    button('关闭', clearToolbar, node)
+  }
+  const showChat = (source: ModelSelection | undefined, action: 'explain' | 'summarize' = 'explain') => {
+    if (!enabled(CHAT)) return
+    if (!source) { hint(); return }
+    clearToolbar(); popup?.close(); chat?.close()
+    chat = modelChatPanel(ctx, source, action, () => { chat = undefined }, sessions.get(CHAT)!())
+  }
+  const showTranslation = (source: ModelSelection | undefined) => {
+    if (!enabled(TRANSLATE)) return
+    if (!source) { hint(); return }
+    clearToolbar(); popup?.close()
+    popup = translationPopover(ctx, source, () => { popup = undefined }, enabled(CHAT) ? () => showChat(source) : undefined, sessions.get(TRANSLATE)!())
+  }
+  const showTools = (source: ModelSelection) => {
+    clearToolbar()
+    if (!enabled(TRANSLATE) && !enabled(CHAT)) return
+    last = source
+    const node = element('div', '', 'selection-actions'); node.setAttribute('role', 'toolbar'); node.setAttribute('aria-label', '选文操作')
+    node.onpointerdown = e => { e.preventDefault() }
+    if (enabled(TRANSLATE)) button('翻译', () => showTranslation(source), node)
+    if (enabled(CHAT)) { button('解释', () => showChat(source), node); button('总结', () => showChat(source, 'summarize'), node) }
+    button('收起', clearToolbar, node); document.body.append(node); toolbar = node; placeSelectionSurface(node, source.rect)
+  }
+  let selectionTimer: ReturnType<typeof setTimeout>
+  const readSelection = (editorOnly = false) => {
+    if (document.querySelector('dialog[open]')) return
+    const source = captureModelSelection(ctx, editorOnly, editorOnly)
+    if (source) {
+      if (enabled(TRANSLATE) && automaticTranslation() && !chat && !dragging) {
+        const same = lastAuto?.path === source.path && lastAuto.expected === source.expected && lastAuto.text === source.text && lastAuto.from === source.from
+        if (!same) { lastAuto = source; last = source; showTranslation(source) }
+      } else showTools(source)
+    } else { last = undefined; lastAuto = undefined; clearToolbar() }
+  }
   document.addEventListener('selectionchange', () => {
-    const selected = capture(ctx)
-    if (selected) lastPreview = selected
-    else if (document.activeElement?.closest('#editor-pane')) lastPreview = undefined
+    const native = window.getSelection(), preview = document.getElementById('preview')
+    if (native?.anchorNode && preview?.contains(native.anchorNode) && !dragging) { clearTimeout(selectionTimer); selectionTimer = setTimeout(() => readSelection(), 180) }
+    else if (native?.isCollapsed) clearToolbar()
   })
-  const id = 'bundled.ai-reader'
-  registerBundledPlugin(id, { id, name: '选文助手', version: '1.0.0', author: 'Inkleaf', category: '阅读',
-    description: '共用一个模型连接，为选中文字提供解释、翻译和总结。',
-    usage: '先在阅读视图或编辑器选中文字，再运行解释、翻译或总结。连接支持兼容 Chat Completions 的服务及本机 Ollama。发送前展示选文与服务地址，结果经你确认后才写回文档。Key 由主进程系统加密保存，外部插件不可读取。',
-    changelog: [{ version: '1.0.0', notes: '统一连接设置、流式结果、取消请求、复制与安全写回。' }],
-    contributes: { commands: [{ id: `${id}.settings`, title: '模型连接设置…' }, ...Object.entries(labels).map(([action, label]) => ({ id: `${id}.${action}`, title: `${label}选中文字…` }))] }, permissions: ['commands'],
-  }, ink => {
-    ink.commands.register({ id: `${id}.settings`, title: '模型连接设置…', run: () => openServiceSettings('model') })
-    for (const action of Object.keys(labels) as ModelAction[]) ink.commands.register({ id: `${id}.${action}`, title: `${labels[action]}选中文字…`, run: () => openModelReader(ctx, action) })
+  for (const event of ['pointerup', 'keyup']) document.getElementById('editor-pane')!.addEventListener(event, () => { clearTimeout(selectionTimer); selectionTimer = setTimeout(() => readSelection(true), 80) })
+  document.addEventListener('pointerdown', e => {
+    const target = e.target as Element
+    if (target.closest('#preview, #editor-pane')) { dragging = true; lastAuto = undefined; clearTimeout(selectionTimer) }
+    if (!target.closest('.selection-actions, .translation-popover, .ai-chat-panel, dialog')) { clearToolbar(); popup?.close() }
   })
+  document.addEventListener('pointerup', event => {
+    if (!dragging) return
+    dragging = false; clearTimeout(selectionTimer)
+    selectionTimer = setTimeout(() => readSelection(!!(event.target as Element).closest('#editor-pane')), 180)
+  })
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !document.querySelector('dialog[open]')) { if (popup) popup.close(); else if (toolbar) clearToolbar(); else chat?.close() } })
+  const invalidate = () => {
+    if (last && (last.path !== ctx.path() || last.expected !== ctx.content())) { last = undefined; clearToolbar() }
+    if (popup && popup.path !== ctx.path()) popup.close()
+    if (chat && chat.path !== ctx.path()) chat.close()
+  }
+  onPreviewRendered(invalidate)
+  window.addEventListener('inkleaf-document-changed', invalidate)
+  window.addEventListener('resize', () => { clearToolbar(); popup?.close() })
+  document.getElementById('preview-scroll')!.addEventListener('scroll', () => { clearToolbar(); popup?.close() }, { passive: true })
+  onPluginStateChange(() => { clearToolbar(); if (!enabled(TRANSLATE)) popup?.close(); if (!enabled(CHAT)) chat?.close() })
+  inheritPluginOptOut('bundled.ai-reader', [TRANSLATE, CHAT])
+  for (const translation of [true, false]) {
+    const id = translation ? TRANSLATE : CHAT
+    registerBundledPlugin(id, { id, name: translation ? '划词翻译' : 'AI 问询', version: '1.0.0', author: 'Inkleaf', category: '阅读',
+      description: translation ? '选中文字，就近打开翻译浮窗；支持多语言、复制和安全替换。' : '围绕选文在右侧解释、总结与连续追问，支持 Markdown、公式和按需加载图片。',
+      usage: '使用应用级“模型连接”，无需重复配置。阅读视图和编辑器均可选文，点击选文工具条。仅主动请求时发送选文；停用本插件不会移除连接或影响其他 AI 功能。',
+      permissions: ['commands', 'model'], contributes: { commands: translation ? [{ id: `${id}.translate`, title: '翻译选中文字' }, { id: `${id}.settings`, title: '划词翻译设置…' }] : [{ id: `${id}.explain`, title: '解释选中文字' }, { id: `${id}.summarize`, title: '总结选中文字' }] },
+      changelog: [{ version: '1.0.0', notes: '从选文助手拆分，共用应用级模型连接。' }],
+    }, ink => {
+      sessions.set(id, () => ink.model.createSession())
+      if (translation) {
+        ink.commands.register({ id: `${id}.translate`, title: '翻译选中文字', run: () => showTranslation(chosen()) })
+        ink.commands.register({ id: `${id}.settings`, title: '划词翻译设置…', run: openTranslationSettings })
+      }
+      else for (const action of ['explain', 'summarize'] as const) ink.commands.register({ id: `${id}.${action}`, title: `${action === 'explain' ? '解释' : '总结'}选中文字`, run: () => showChat(chosen(), action) })
+    })
+  }
 }
