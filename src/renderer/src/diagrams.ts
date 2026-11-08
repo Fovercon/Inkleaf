@@ -64,7 +64,7 @@ export function safeDiagram(svg: string): SVGElement {
   if (!result || !result.querySelector('path,rect,ellipse,circle,text,line,polygon,polyline')) throw new Error('服务未返回有效 SVG 图表')
   result.setAttribute('role', 'img'); result.setAttribute('aria-label', '代码图表'); return result
 }
-async function renderDiagram(pre: HTMLElement, source: string, ctx: RenderContext, plantuml: boolean, changed: () => void) {
+async function renderDiagram(pre: HTMLElement, source: string, ctx: RenderContext, plantuml: boolean) {
   if (ctx.isCurrent && !ctx.isCurrent()) return
   const hint = element('p', plantuml ? '正在渲染 PlantUML…' : '正在渲染 Graphviz…', 'diagram-status')
   pre.after(hint)
@@ -79,23 +79,27 @@ async function renderDiagram(pre: HTMLElement, source: string, ctx: RenderContex
     if ((ctx.isCurrent && !ctx.isCurrent()) || !pre.isConnected) { hint.remove(); return }
     hint.textContent = error instanceof Error ? error.message : '图表渲染失败，已保留源码'
     hint.classList.add('error')
-    if (plantuml) { const button = element('button', '配置 PlantUML 服务'); button.onclick = () => openServiceSettings('diagram', changed); hint.append(' ', button) }
+    if (plantuml) { const button = element('button', '配置 PlantUML 服务'); button.onclick = () => openServiceSettings('diagram'); hint.append(' ', button) }
   }
 }
 export function registerDiagramPlugins(onChange: () => void) {
   const changed = () => { plantRevision++; plantCache.clear(); onChange() }
+  window.addEventListener('inkleaf-services-changed', event => {
+    if (event instanceof CustomEvent && event.detail?.section === 'model') return
+    changed()
+  })
   for (const plantuml of [false, true]) {
     const id = plantuml ? 'bundled.plantuml' : 'bundled.graphviz'
     const command = `${id}.settings`
-    registerBundledPlugin(id, { id, name: plantuml ? 'PlantUML 图表' : 'Graphviz 图表', version: '1.0.0', author: 'Inkleaf', category: '图表',
-      description: plantuml ? '渲染 PlantUML 时序、类、活动和架构图，连接你指定的本机或自建服务。' : '离线渲染 DOT 流程、依赖、结构和算法图。',
-      usage: plantuml ? '使用 plantuml 或 puml 围栏。在“图表服务设置”填写服务根地址后，代码将发送给该服务。未配置时保留源码；不支持外部 include/import。' : '使用 dot 或 graphviz 围栏，无需网络。大图或语法错误会保留源码。',
+    registerBundledPlugin(id, { id, name: plantuml ? 'PlantUML 图表' : 'Graphviz 图表', version: plantuml ? '1.1.0' : '1.0.0', author: 'Inkleaf', category: '图表',
+      description: plantuml ? '渲染 PlantUML 图表，内置官方和 Kroki 免费服务预设，也可连接本机服务。' : '离线渲染 DOT 流程、依赖、结构和算法图。',
+      usage: plantuml ? '使用 plantuml 或 puml 围栏。在图表服务中选择官方 / Kroki 免费服务或填写本机地址，保存后代码将发送给所选服务。未配置时保留源码；不支持外部 include/import。' : '使用 dot 或 graphviz 围栏，无需网络。大图或语法错误会保留源码。',
       examples: [{ title: '基础示例', markdown: plantuml ? '```plantuml\n@startuml\nAlice -> Bob: Hello\nBob --> Alice: OK\n@enduml\n```' : '```dot\ndigraph { Start -> Check; Check -> Done [label="yes"]; Check -> Start [label="retry"]; }\n```' }],
-      changelog: [{ version: '1.0.0', notes: '首次支持图表渲染、净化 SVG、错误提示和查看源码。' }],
+      changelog: [...(plantuml ? [{ version: '1.1.0', notes: '官方与 Kroki 免费服务预设、独立协议、固定样例连接测试。' }] : []), { version: '1.0.0', notes: '首次支持图表渲染、净化 SVG、错误提示和查看源码。' }],
       contributes: { commands: [{ id: command, title: '图表服务设置…' }] }, permissions: ['render', 'commands'],
     }, ink => {
-      ink.commands.register({ id: command, title: '图表服务设置…', run: () => openServiceSettings('diagram', changed) })
-      for (const lang of plantuml ? ['plantuml', 'puml'] : ['dot', 'graphviz']) ink.pipeline.registerCodeBlockProcessor(lang, (pre, source, ctx) => { void renderDiagram(pre, source, ctx, plantuml, changed) })
+      ink.commands.register({ id: command, title: '图表服务设置…', run: () => openServiceSettings('diagram') })
+      for (const lang of plantuml ? ['plantuml', 'puml'] : ['dot', 'graphviz']) ink.pipeline.registerCodeBlockProcessor(lang, (pre, source, ctx) => { void renderDiagram(pre, source, ctx, plantuml) })
     })
   }
 }
