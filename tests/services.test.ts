@@ -61,3 +61,12 @@ test('bounded response streaming preserves UTF-8 and cancels an oversized body',
   assert.equal(await readBounded(response, 10), '你好')
   await assert.rejects(() => readBounded(new Response('oversized'), 3), /大小限制/)
 })
+test('abort releases a stalled reader even when transport cancellation never settles', { timeout: 1000 }, async () => {
+  const controller = new AbortController(); let cleanup = false
+  const response = new Response(new ReadableStream({
+    start(stream) { stream.enqueue(new TextEncoder().encode('partial')) },
+    cancel() { cleanup = true; return new Promise(() => {}) },
+  }))
+  await assert.rejects(() => readBounded(response, 100, () => controller.abort(), controller.signal), /取消/)
+  assert.equal(cleanup, true)
+})

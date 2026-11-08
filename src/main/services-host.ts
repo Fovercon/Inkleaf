@@ -87,7 +87,7 @@ async function renderRemoteDiagram(event: IpcMainInvokeEvent, source: string, en
     try {
       const response = await fetch(endpoint + suffix, { redirect: 'error', signal: abort.signal, headers: { Accept: 'image/svg+xml' } })
       if (!response.ok) throw new Error(`服务返回 HTTP ${response.status}，请检查图表语法和地址`)
-      const svg = await readBounded(response, 2 * 1024 * 1024)
+      const svg = await readBounded(response, 2 * 1024 * 1024, undefined, abort.signal)
       if (!/<svg\b/i.test(svg)) throw new Error('服务未返回 SVG 图像')
       return svg
     } catch (error) { throw networkError(error, abort.signal) }
@@ -135,13 +135,13 @@ export function registerServiceIpc() {
         headers: { 'Content-Type': 'application/json', ...(secret ? { Authorization: `Bearer ${secret}` } : {}) }, body: JSON.stringify(payload) })
       if (!response.ok) throw new Error(`模型服务返回 HTTP ${response.status}，请检查凭据、额度和模型名称`)
       if ((response.headers.get('content-type') || '').includes('application/json') && !(response.headers.get('content-type') || '').includes('ndjson')) {
-        const obj = JSON.parse(await readBounded(response, 2 * 1024 * 1024))
+        const obj = JSON.parse(await readBounded(response, 2 * 1024 * 1024, undefined, abort.signal))
         if (obj.error) throw new Error('模型服务报告错误，请检查连接配置')
         const content = provider === 'ollama' ? obj.message?.content : obj.choices?.[0]?.message?.content
         if (typeof content !== 'string') throw new Error('模型服务返回格式不兼容')
         emit(content)
       } else {
-        const stream = modelStream(provider, emit); await readBounded(response, 2 * 1024 * 1024, stream.push); stream.finish()
+        const stream = modelStream(provider, emit); await readBounded(response, 2 * 1024 * 1024, stream.push, abort.signal); stream.finish()
       }
       if (!result.trim()) throw new Error('模型没有返回文本内容')
       return result

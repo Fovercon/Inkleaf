@@ -62,18 +62,29 @@ export function diagramPath(source: string, provider: 'plantuml' | 'kroki' = 'pl
   const standard = plantumlPath(source) // validate the same source and resource policy for both services
   return provider === 'kroki' ? '/plantuml/svg/' + deflateSync(Buffer.from(source), { level: 9 }).toString('base64url') : standard
 }
-export async function readBounded(response: Response, limit: number, onChunk?: (text: string) => void) {
+export async function readBounded(response: Response, limit: number, onChunk?: (text: string) => void, signal?: AbortSignal) {
   const reader = response.body?.getReader(); if (!reader) throw new Error('服务没有返回内容')
   let size = 0, result = ''; const decoder = new TextDecoder()
+  let rejectAbort!: (error: Error) => void
+  const cancelled = new Promise<never>((_resolve, reject) => { rejectAbort = reject })
+  const abort = () => rejectAbort(new Error('请求已取消'))
+  signal?.addEventListener('abort', abort, { once: true })
+  if (signal?.aborted) abort()
   try {
     while (true) {
-      const { done, value } = await reader.read(); if (done) break
+      const { done, value } = await (signal ? Promise.race([reader.read(), cancelled]) : reader.read()); if (done) break
       size += value.byteLength; if (size > limit) throw new Error('服务返回内容超过大小限制')
       const text = decoder.decode(value, { stream: true }); if (onChunk) onChunk(text); else result += text
     }
     const tail = decoder.decode(); if (onChunk) onChunk(tail); else result += tail
     return result
-  } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
+  } finally {
+    signal?.removeEventListener('abort', abort)
+    // Some Linux/Electron transports leave cancel() pending until the peer closes.
+    // Cleanup must not hold the caller or the model job slot hostage to that peer.
+    void reader.cancel().catch(() => {})
+    reader.releaseLock()
+  }
 }
 /** Incremental SSE / Ollama NDJSON parser; never forwards raw provider errors. */
 export function modelStream(provider: 'compatible' | 'ollama', emit: (text: string) => void) {
