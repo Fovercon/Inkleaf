@@ -24,8 +24,8 @@ const readyWindows = new Set<number>()
 app.setPath('userData', process.env.MDR_TEST
   ? path.join(app.getPath('temp'), `inkleaf-ui-${process.pid}`)
   : path.join(app.getPath('appData'), 'my-markdown-reader'))
-app.setName('Inkleaf')
-if (process.platform === 'linux') app.commandLine.appendSwitch('class', 'inkleaf')
+// Electron 33 derives X11 WM_CLASS from app.getName().
+app.setName(process.platform === 'linux' ? 'inkleaf' : 'Inkleaf')
 
 // Release filesystem resources before Chromium starts its shutdown sequence.
 let closingResources = false, resourcesClosed = false
