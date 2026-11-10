@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
+import { lstatSync } from 'node:fs'
 import { chmod, copyFile, link, mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import os from 'node:os'
@@ -7,6 +8,7 @@ import path from 'node:path'
 import { selectRelease, selectManualRelease, validateDownloadHost, MAX_ARCHIVE_BYTES } from '../src/main/updatePolicy'
 import { validateArchive } from '../src/main/updateArchive'
 import { appImageTarget, validateAppImageFile, validateAppImageHeader } from '../src/main/linuxAppImage'
+import { finishUpdateStartup } from '../src/main/updateCleanup'
 
 const digest = 'a1'.repeat(32)
 const version = '0.3.0'
@@ -163,6 +165,107 @@ test('AppImage paths reject symlinks, hardlinks, non-executable files and foreig
   await assert.rejects(appImageTarget(path.join(directory, 'Other.AppImage'), 'x64'))
   await assert.rejects(appImageTarget(undefined, 'x64'))
   await assert.rejects(appImageTarget('Inkleaf.AppImage', 'x64'))
+})
+
+async function cleanupFixture(t: TestContext, appImage: boolean) {
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'inkleaf-update-cleanup-')))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const profile = path.join(root, 'profile'), cache = path.join(profile, 'updates')
+  const target = path.join(root, appImage ? 'Inkleaf.AppImage' : 'Inkleaf.app')
+  const job = path.join(root, '.inkleaf-update-aBc123'), download = path.join(cache, 'download-aBc123')
+  const backup = path.join(job, appImage ? 'previous.AppImage' : 'Inkleaf.app')
+  const ack = path.join(job, 'boot-ack'), result = path.join(job, 'result.json')
+  const downloaded = path.join(download, appImage ? 'update.AppImage' : 'update.zip')
+  const nonce = 'a1'.repeat(24)
+  const ticket = { target, job, ack, result, nonce, version, downloaded }
+  await mkdir(download, { recursive: true, mode: 0o700 })
+  await mkdir(job, { mode: 0o700 })
+  await writeFile(path.join(profile, 'notes.md'), 'user data')
+  if (appImage) await writeFile(backup, 'old installation')
+  else {
+    await mkdir(backup)
+    await symlink(path.join(profile, 'notes.md'), path.join(backup, 'external-link'))
+  }
+  await writeFile(target, 'new installation')
+  await writeFile(downloaded, 'verified update')
+  await writeFile(path.join(job, 'install-helper'), 'temporary helper')
+  const writeTicket = (overrides: Record<string, unknown> = {}) => writeFile(path.join(cache, 'transaction.json'), JSON.stringify({ ...ticket, ...overrides }))
+  const writeReceipt = (state: string) => writeFile(result, JSON.stringify({ state, version, backupPath: backup }))
+  await writeTicket()
+  const finish = (launchNonce?: string) => finishUpdateStartup(cache, target, version, appImage, launchNonce)
+  return { profile, cache, target, job, backup, ack, nonce, download, downloaded, writeReceipt, writeTicket, finish }
+}
+
+for (const appImage of [false, true]) {
+  test(`${appImage ? 'AppImage' : 'Mac'} startup removes only the confirmed update's program backup and download`, async t => {
+    const fixture = await cleanupFixture(t, appImage)
+    const { profile, target, job, backup, ack, nonce, download, finish, writeReceipt } = fixture
+    await writeReceipt('restarting')
+    const finishing = finish(nonce)
+    // The helper observes the real ACK before recording success.
+    for (let attempt = 0; attempt < 100 && !lstatSync(ack, { throwIfNoEntry: false }); attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+    assert.equal(await readFile(ack, 'utf8'), nonce)
+    assert.ok(await stat(backup))
+    await writeReceipt('installed')
+    await finishing
+    assert.equal(lstatSync(backup, { throwIfNoEntry: false }), undefined)
+    assert.equal(lstatSync(download, { throwIfNoEntry: false }), undefined)
+    assert.equal(lstatSync(path.join(job, 'install-helper'), { throwIfNoEntry: false }), undefined)
+    assert.equal(await readFile(target, 'utf8'), 'new installation')
+    assert.equal(await readFile(path.join(profile, 'notes.md'), 'utf8'), 'user data')
+    // A later launch can repeat cleanup harmlessly.
+    await finish()
+  })
+}
+
+test('cleanup preserves rollback files until both a matching ACK and successful receipt exist', async t => {
+  const { backup, ack, nonce, downloaded, finish, writeReceipt } = await cleanupFixture(t, true)
+  await writeReceipt('installed')
+  await finish('b2'.repeat(24))
+  assert.equal(lstatSync(ack, { throwIfNoEntry: false }), undefined)
+  await writeFile(ack, nonce)
+  for (const state of ['waiting', 'restarting', 'rolled-back', 'needs-recovery', 'error']) {
+    await writeReceipt(state)
+    await finish()
+    assert.ok(await stat(backup))
+    assert.ok(await stat(downloaded))
+  }
+})
+
+test('startup can clean an older receipt and ignores downloads outside the private cache', async t => {
+  const { profile, backup, ack, nonce, downloaded, finish, writeReceipt, writeTicket } = await cleanupFixture(t, false)
+  await writeReceipt('installed')
+  await writeTicket({ downloaded: undefined })
+  await finish(nonce)
+  assert.equal(lstatSync(backup, { throwIfNoEntry: false }), undefined)
+  assert.ok(await stat(downloaded))
+
+  const other = path.join(profile, 'download-aBc123')
+  await mkdir(other, { mode: 0o700 })
+  const unrelated = path.join(other, 'update.zip')
+  await writeFile(unrelated, 'user data')
+  await writeTicket({ downloaded: unrelated })
+  await finish()
+  assert.equal(await readFile(unrelated, 'utf8'), 'user data')
+  assert.equal(await readFile(ack, 'utf8'), nonce)
+})
+
+test('cleanup does not follow a symlink in the backup or download path', async t => {
+  const { profile, backup, ack, nonce, download, downloaded, finish, writeReceipt } = await cleanupFixture(t, false)
+  const userDirectory = path.join(profile, 'user-data')
+  await mkdir(userDirectory, { mode: 0o700 })
+  await writeFile(path.join(userDirectory, 'update.zip'), 'user data')
+  await rm(backup, { recursive: true })
+  await symlink(userDirectory, backup)
+  await rm(downloaded)
+  await rm(download, { recursive: true })
+  await symlink(userDirectory, download)
+  await writeFile(ack, nonce)
+  await writeReceipt('installed')
+  await finish()
+  assert.equal(await readFile(path.join(userDirectory, 'update.zip'), 'utf8'), 'user data')
 })
 
 test('Linux native helper replaces atomically, keeps backup, verifies both payloads and observes boot ACK', { skip: process.platform !== 'linux' }, async t => {

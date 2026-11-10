@@ -2,7 +2,7 @@
 // then its normal renderer/preload initialization writes the genuine boot ACK.
 import assert from 'node:assert/strict'
 import { createReadStream } from 'node:fs'
-import { chmod, copyFile, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import { access, chmod, copyFile, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { createHash, randomBytes } from 'node:crypto'
 import { execFileSync, spawn } from 'node:child_process'
 import os from 'node:os'
@@ -30,11 +30,13 @@ const updates = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(),
 const ticket = path.join(updates, 'transaction.json')
 const nonce = randomBytes(24).toString('hex')
 let wroteTicket = false
+let downloadDirectory
 let child
 let mayHaveLaunched = false
 let appStopped = false
 const processDiagnostics = new Map()
 const helperChildren = new Map()
+const exists = filename => access(filename).then(() => true, error => { if (error.code !== 'ENOENT') throw error; return false })
 const digest = async filename => {
   const hash = createHash('sha256')
   for await (const chunk of createReadStream(filename)) hash.update(chunk)
@@ -173,18 +175,21 @@ try {
   await copyFile(image, staged)
   await chmod(target, 0o700)
   await chmod(staged, 0o700)
-  const original = await stat(target), prepared = await stat(staged)
+  const prepared = await stat(staged)
   const sha256 = await digest(image)
   await mkdir(updates, { recursive: true, mode: 0o700 })
+  downloadDirectory = await mkdtemp(path.join(updates, 'download-'))
+  const downloaded = path.join(downloadDirectory, 'update.AppImage')
+  await copyFile(image, downloaded)
   // Refuse to overwrite even an unexpected CI transaction; no real profile is used.
-  await writeFile(ticket, JSON.stringify({ nonce, version: pkg.version, target, job, ack, result }), { flag: 'wx', mode: 0o600 })
+  await writeFile(ticket, JSON.stringify({ nonce, version: pkg.version, target, job, ack, result, downloaded }), { flag: 'wx', mode: 0o600 })
   wroteTicket = true
   const environment = { ...process.env, INKLEAF_BOOT_TEST_NONCE: nonce }
   delete environment.MDR_TEST
   delete environment.MDR_ROUND
   delete environment.ELECTRON_RUN_AS_NODE
   const completion = new Promise((resolve, reject) => {
-    child = spawn(helper, [target, staged, image, sha256, '2147483647', ack, nonce, pkg.version, result], { cwd: root, env: environment, stdio: 'inherit' })
+    child = spawn(helper, [target, staged, downloaded, sha256, '2147483647', ack, nonce, pkg.version, result], { cwd: root, env: environment, stdio: 'inherit' })
     mayHaveLaunched = true
     child.once('error', reject)
     // Use exit, not close: the new GUI deliberately outlives the helper.
@@ -208,21 +213,25 @@ try {
   assert.equal(receipt.version, pkg.version)
   assert.equal(receipt.backupPath, backup)
   assert.equal(await digest(target), sha256)
-  assert.equal(await digest(backup), sha256)
-  const installed = await stat(target), retained = await stat(backup)
+  const installed = await stat(target)
   assert.equal(installed.ino, prepared.ino, 'The prepared real AppImage inode must replace target atomically')
-  assert.equal(retained.ino, original.ino, 'The previous real AppImage must remain as backup')
   assert.equal(installed.nlink, 1)
-  assert.equal(retained.nlink, 1)
+  const cleanupDeadline = Date.now() + 10000
+  while (Date.now() < cleanupDeadline && (await exists(backup) || await exists(downloadDirectory))) {
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+  assert.equal(await exists(backup), false, 'A successful restart should clean the old AppImage')
+  assert.equal(await exists(downloadDirectory), false, 'A successful restart should clean its download')
   await stopOwnedApp(true)
   await mkdir('verify', { recursive: true })
-  await writeFile(`verify/linux-${process.arch}-boot-ack.json`, JSON.stringify({ state: receipt.state, version: pkg.version, targetSha256: sha256, backupSha256: sha256, genuineRendererAck: true, atomicReplacement: true, gracefulExit: true }, null, 2) + '\n')
-  console.log(`[boot-ack-check] installed ${pkg.version} with real AppImage, native helper, renderer ACK, backup and graceful exit`)
+  await writeFile(`verify/linux-${process.arch}-boot-ack.json`, JSON.stringify({ state: receipt.state, version: pkg.version, targetSha256: sha256, genuineRendererAck: true, atomicReplacement: true, cleanedUpdateFiles: true, gracefulExit: true }, null, 2) + '\n')
+  console.log(`[boot-ack-check] installed ${pkg.version} with real AppImage, native helper, renderer ACK, cleanup and graceful exit`)
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) child.kill('SIGTERM')
   if (mayHaveLaunched && !appStopped) await stopOwnedApp(false).catch(error => console.error(error.message))
   if (!mayHaveLaunched || appStopped) {
     if (wroteTicket) await rm(ticket, { force: true })
+    if (downloadDirectory) await rm(downloadDirectory, { recursive: true, force: true })
     await rm(fixture, { recursive: true, force: true })
   } else console.error(`Retained running-image fixture for diagnostics: ${fixture}`)
 }
