@@ -24,7 +24,8 @@ const readyWindows = new Set<number>()
 app.setPath('userData', process.env.MDR_TEST
   ? path.join(app.getPath('temp'), `inkleaf-ui-${process.pid}`)
   : path.join(app.getPath('appData'), 'my-markdown-reader'))
-app.setName('Inkleaf')
+// Electron 33 derives X11 WM_CLASS from app.getName().
+app.setName(process.platform === 'linux' ? 'inkleaf' : 'Inkleaf')
 
 // Release filesystem resources before Chromium starts its shutdown sequence.
 let closingResources = false, resourcesClosed = false
@@ -220,6 +221,19 @@ async function createWindow() {
           if (actualKind !== kind) throw new Error('Linux installation type was not detected correctly')
           if (kind === 'appimage') await appImageTarget(process.env.APPIMAGE, process.arch)
           console.log(`[installation-check] ${kind} update mode OK`)
+          if (process.env.INKLEAF_CHECK_DESKTOP_CLASS === '1') {
+            const { execFileSync } = await import('node:child_process')
+            const id = String(win.getNativeWindowHandle().readUInt32LE(0))
+            const wmClass = execFileSync('xprop', ['-id', id, 'WM_CLASS'], { encoding: 'utf8' })
+            if (!/, "inkleaf"\s*$/.test(wmClass)) throw new Error(`Desktop entry class mismatch: ${wmClass.trim()}`)
+            console.log('[desktop-check] X11 window matches inkleaf.desktop')
+          }
+          const expectedProfile = process.env.INKLEAF_EXPECT_APPARMOR_PROFILE
+          if (expectedProfile) {
+            const actual = (await fsp.readFile('/proc/self/attr/current', 'utf8')).trim()
+            if (!actual.startsWith(`${expectedProfile} `)) throw new Error(`AppImage profile mismatch: ${actual}`)
+            console.log(`[apparmor-check] ${actual}`)
+          }
         }
         console.log(`[platform-check] ${expectedPlatform} shortcuts, preload and sandbox OK`)
         const dir = path.join(process.cwd(), 'verify')

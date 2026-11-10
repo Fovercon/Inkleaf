@@ -1,8 +1,9 @@
 {
   "name": "inkleaf",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "description": "墨页 · Inkleaf — a quiet place to read and write Markdown",
   "main": "out/main.js",
+  "desktopName": "inkleaf.desktop",
   "author": "Inkleaf contributors",
   "homepage": "https://github.com/Fovercon/Inkleaf",
   "license": "UNLICENSED",
@@ -44,38 +45,21 @@
       "out/**/*",
       "package.json"
     ],
-    "fileAssociations": [
-      {
-        "ext": "md",
-        "name": "Markdown Document",
-        "mimeType": "text/markdown",
-        "role": "Viewer"
-      },
-      {
-        "ext": "markdown",
-        "name": "Markdown Document",
-        "mimeType": "text/markdown",
-        "role": "Viewer"
-      }
-    ],
     "linux": {
       "target": [
         "AppImage",
         "deb"
       ],
-      "icon": "build/inkleaf-icon.png",
+      "icon": "build/linux-icons",
       "executableName": "inkleaf",
       "category": "Office",
       "maintainer": "Fovercon <fovercon@users.noreply.github.com>",
       "artifactName": "Inkleaf-${version}-linux-${arch}.${ext}",
-      "mimeTypes": [
-        "text/markdown",
-        "text/x-markdown"
-      ],
       "desktop": {
         "Name": "墨页 · Inkleaf",
         "Comment": "A quiet place to read and write Markdown",
-        "StartupWMClass": "Inkleaf"
+        "StartupWMClass": "inkleaf",
+        "MimeType": "text/markdown;text/x-markdown;"
       }
     },
     "appImage": {
@@ -99,6 +83,20 @@
       ]
     },
     "mac": {
+      "fileAssociations": [
+        {
+          "ext": "md",
+          "name": "Markdown Document",
+          "mimeType": "text/markdown",
+          "role": "Viewer"
+        },
+        {
+          "ext": "markdown",
+          "name": "Markdown Document",
+          "mimeType": "text/markdown",
+          "role": "Viewer"
+        }
+      ],
       "category": "public.app-category.productivity",
       "icon": "build/icon.icns",
       "target": [

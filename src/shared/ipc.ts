@@ -45,6 +45,12 @@ export interface Backlink {
   line: number
 }
 
+export interface RelationResult {
+  backlinks: (Backlink & { context: string })[]
+  mentions: (Backlink & { context: string })[]
+  mentionsDeferred?: boolean
+}
+
 export interface ImageResolution {
   url?: string
   path?: string

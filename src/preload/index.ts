@@ -3,7 +3,7 @@ import type { CatalogState, PluginResult } from '../shared/plugins'
 import type { ServiceSettings, ServiceSettingsInput, DiagramProvider, ModelRequest, ModelChunk } from '../shared/services'
 import type { UpdateState } from '../shared/updates'
 import type { HistoryList, HistoryVersion, SearchOptions, SearchReport, BatchPreview, BatchResult } from '../shared/knowledge'
-import { CH, type TreeNode, type TextHit, type OpResult, type ConfirmOptions, type FsEvent, type TagCount, type Backlink, type ImageResolution } from '../shared/ipc'
+import { CH, type TreeNode, type TextHit, type OpResult, type ConfirmOptions, type FsEvent, type TagCount, type Backlink, type ImageResolution, type RelationResult } from '../shared/ipc'
 
 const api = {
   serviceSettings: (): Promise<ServiceSettings> => ipcRenderer.invoke(CH.serviceGet),
@@ -57,7 +57,7 @@ const api = {
   readFile: (p: string): Promise<string> => ipcRenderer.invoke(CH.fsRead, p),
   tagPreview: (from: string, to: string): Promise<BatchPreview> => ipcRenderer.invoke(CH.tagPreview, from, to),
   createDocument: (relative: string, content: string, existing = false, from?: string): Promise<string> => ipcRenderer.invoke(CH.createDocument, relative, content, existing, from),
-  indexRelations: (target: string): Promise<{ backlinks: (Backlink & { context: string })[]; mentions: (Backlink & { context: string })[] }> => ipcRenderer.invoke(CH.indexRelations, target),
+  indexRelations: (target: string | null, scanMentions = false): Promise<RelationResult> => ipcRenderer.invoke(CH.indexRelations, target, scanMentions),
   advancedSearch: (options: SearchOptions): Promise<SearchReport> => ipcRenderer.invoke(CH.advancedSearch, options),
   replacePreview: (options: SearchOptions, replacement: string): Promise<BatchPreview> => ipcRenderer.invoke(CH.replacePreview, options, replacement),
   batchApply: (id: string, paths: string[]): Promise<BatchResult> => ipcRenderer.invoke(CH.batchApply, id, paths),

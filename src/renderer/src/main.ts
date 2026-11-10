@@ -143,7 +143,9 @@ function applyLayout() {
   const scale = Math.min(1, Math.max(0, width - 260) / Math.max(1, desiredWidth))
   for (const p of listPanels()) {
     const c = collapsed(p.id)
+    const visibilityChanged = p.el.classList.contains('pane-collapsed') !== c
     p.el.classList.toggle('pane-collapsed', c)
+    if (p.id === 'backlink' && visibilityChanged) void refreshBacklinks(runtime.currentFile)
     // sharesWidth 面板（右栏堆叠）不设自身宽度，随容器铺满
     p.el.style.width = p.slot === 'left' && !c ? `${Math.round(panelWidth(p) * scale)}px` : ''
     p.onLayout?.(c)

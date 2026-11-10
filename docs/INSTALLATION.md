@@ -38,7 +38,30 @@ chmod +x Inkleaf-VERSION-linux-x64.AppImage
 ./Inkleaf-VERSION-linux-x64.AppImage
 ```
 
-AppImage 的 FUSE 启动方式需要 FUSE 2 兼容库：Ubuntu 22.04 使用 `libfuse2`，Ubuntu 24.04 使用 `libfuse2t64`。Ubuntu 24.04 的 AppArmor 可能限制便携应用创建用户命名空间；如遇沙箱启动错误，推荐使用 `.deb` 安装包。
+AppImage 的 FUSE 启动方式需要 FUSE 2 兼容库。Ubuntu 22.04 使用 `libfuse2`，Ubuntu 24.04 使用 `libfuse2t64`。
+
+### Ubuntu 上 AppImage 启动时报 `chrome-sandbox` 错误
+
+Ubuntu 23.10 及更新版本可能通过 AppArmor 限制用户命名空间。遇到 `SUID sandbox helper binary ... not configured correctly` 时，可安装上面的 `.deb`，也可由管理员给下载自正式 Releases 的 AppImage 配置专用规则。[Ubuntu 24.04 的 AppArmor 说明](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions)
+
+先把 AppImage 放到固定位置。下例使用 `/home/alice/Applications/Inkleaf.AppImage`，请替换为实际的绝对路径。路径可用 `realpath ./Inkleaf.AppImage` 查看。
+
+用 `sudoedit /etc/apparmor.d/inkleaf-appimage` 写入以下规则。使用准确的文件路径，授予该 AppImage 创建用户命名空间的权限，供 Chromium 启用沙箱。
+
+```text
+abi <abi/4.0>,
+include <tunables/global>
+
+profile inkleaf-appimage "/home/alice/Applications/Inkleaf.AppImage" flags=(unconfined) {
+  userns,
+}
+```
+
+```bash
+sudo apparmor_parser -r /etc/apparmor.d/inkleaf-appimage
+```
+
+重新启动原始 AppImage。移动或改名后需修改规则里的路径并重新加载。应用内更新会沿用原路径。移除规则时，先运行 `sudo apparmor_parser -R /etc/apparmor.d/inkleaf-appimage`，然后删除该规则文件。
 
 ## 更新已有安装
 
