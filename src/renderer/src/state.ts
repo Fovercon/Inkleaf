@@ -56,9 +56,9 @@ function load(): UiState {
       scrollByPath: p.scrollByPath ?? {},
       sidebarTab: p.sidebarTab === 'recent' || p.sidebarTab === 'tags' ? p.sidebarTab : 'files',
       fontScale: typeof p.fontScale === 'number' ? Math.min(1.6, Math.max(0.8, p.fontScale)) : 1,
-      readingWidth: Number.isFinite(p.readingWidth) ? Math.round(Math.min(1600, Math.max(640, p.readingWidth!))) : 1000,
+      readingWidth: Number.isFinite(p.readingWidth) ? Math.round(Math.min(1600, Math.max(640, p.readingWidth!)) / 20) * 20 : 1000,
       readingFit: p.readingFit === true,
-      readingPadding: Number.isFinite(p.readingPadding) ? Math.round(Math.min(64, Math.max(12, p.readingPadding!))) : 24,
+      readingPadding: Number.isFinite(p.readingPadding) ? Math.round(Math.min(64, Math.max(12, p.readingPadding!)) / 2) * 2 : 24,
       focusMode: p.focusMode === true,
       typewriter: p.typewriter === true,
     }
