@@ -10,6 +10,7 @@ import type { UpdateState } from '../shared/updates'
 import { RELEASE_API, selectRelease, selectManualRelease, validateDownloadHost, type UpdateCandidate, type ReleaseSummary } from './updatePolicy'
 import { validateArchive } from './updateArchive'
 import { appImageTarget, validateAppImageFile } from './linuxAppImage'
+import { finishUpdateStartup } from './updateCleanup'
 
 const execute = promisify(execFile)
 let state: UpdateState
@@ -229,7 +230,7 @@ export async function installUpdate(): Promise<UpdateState> {
     await fs.copyFile(path.join(__dirname, 'inkleaf-update-helper'), helper, constants.COPYFILE_EXCL)
     await fs.chmod(helper, 0o700)
     const nonce = randomBytes(24).toString('hex'), ack = path.join(job, 'boot-ack'), result = path.join(job, 'result.json')
-    await fs.writeFile(transactionFile(), JSON.stringify({ nonce, version: update.version, target, job, ack, result }), { mode: 0o600 })
+    await fs.writeFile(transactionFile(), JSON.stringify({ nonce, version: update.version, target, job, ack, result, downloaded }), { mode: 0o600 })
     const child = spawn(helper, [target, staged, downloaded, update.sha256, String(process.pid), ack, nonce, update.version, result], { detached: true, stdio: 'ignore' })
     helperChild = child
     await new Promise<void>((resolve, reject) => { child.once('spawn', resolve); child.once('error', reject) })
@@ -262,20 +263,13 @@ export async function installUpdate(): Promise<UpdateState> {
     return setState('ready', `安装未开始：${reason(e)}。可以重试或手动替换应用。`, 100)
   } finally { installBusy = false }
 }
-async function acknowledgeStartup() {
+async function completeStartupUpdate() {
+  if (state.status === 'unsupported' || state.installationKind === 'deb') return
+  const appImage = state.installationKind === 'appimage'
   const i = process.argv.indexOf('--inkleaf-update')
-  if (i < 0) return
-  const nonce = process.argv[i + 1]
-  if (!/^[a-f0-9]{48}$/.test(nonce ?? '')) return
-  try {
-    const ticket = JSON.parse(await fs.readFile(transactionFile(), 'utf8'))
-    const target = process.platform === 'linux' ? await appImageTarget(process.env.APPIMAGE, process.arch) : path.resolve(app.getPath('exe'), '../../..')
-    if (ticket.nonce !== nonce || ticket.version !== app.getVersion() || ticket.target !== target) return
-    if (path.dirname(ticket.job) !== path.dirname(target) || !path.basename(ticket.job).startsWith('.inkleaf-update-') || ticket.ack !== path.join(ticket.job, 'boot-ack')) return
-    const info = await fs.lstat(ticket.job)
-    if (!info.isDirectory() || info.isSymbolicLink() || (info.mode & 0o777) !== 0o700 || info.uid !== process.getuid?.()) return
-    await fs.writeFile(ticket.ack, nonce, { flag: 'wx', mode: 0o600 })
-  } catch { /* Only the matching update launch can acknowledge this installation. */ }
+  const nonce = i < 0 ? undefined : process.argv[i + 1] ?? ''
+  const target = appImage ? await appImageTarget(process.env.APPIMAGE, process.arch) : path.resolve(app.getPath('exe'), '../../..')
+  await finishUpdateStartup(cacheRoot(), target, app.getVersion(), appImage, nonce)
 }
 export function initializeUpdater() {
   const installationKind = process.platform === 'darwin' ? 'mac-app' : process.platform === 'linux' ? process.env.APPIMAGE ? 'appimage' : 'deb' : undefined
@@ -289,7 +283,14 @@ export function initializeUpdater() {
     if (url.protocol !== 'app:' || url.hostname !== 'local' || url.username || url.password) throw new Error('更新请求来源无效')
     return action()
   })
-  handle('update:getState', async () => { await acknowledgeStartup(); return state })
+  let startupChecked = false
+  handle('update:getState', () => {
+    if (!startupChecked) {
+      startupChecked = true
+      void completeStartupUpdate().catch(() => { /* Retry incomplete cleanup on the next launch. */ })
+    }
+    return state
+  })
   handle('update:check', checkForUpdates)
   handle('update:download', downloadUpdate)
   handle('update:cancel', cancelUpdate)
