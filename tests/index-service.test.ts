@@ -53,13 +53,13 @@ test('valid persistent cache restores names, tags and original-source backlink l
   await index.build(root, [a, b]); await index.flush()
   const reopened = new DocumentIndex(cache)
   t.after(() => reopened.clear())
-  assert.equal(await reopened.load(root, [a, b]), true)
+  await reopened.build(root, [a, b])
   assert.equal(reopened.resolve('A'), a)
   assert.deepEqual(reopened.tags(), [{ tag: 'one', count: 1 }])
   assert.deepEqual(reopened.backlinks('B'), [{ path: a, line: 5 }])
 })
 
-test('reopening rejects stale content even when file size and mtime are unchanged', async t => {
+test('reopening refreshes stale content even when file size and mtime are unchanged', async t => {
   const { root, cache, index, write } = await fixture(t)
   const a = await write('A.md', '---\ntags: [old]\n---\n# A\n')
   await index.build(root, [a]); await index.flush()
@@ -67,7 +67,6 @@ test('reopening rejects stale content even when file size and mtime are unchange
   await fs.writeFile(a, '---\ntags: [new]\n---\n# A\n'); await fs.utimes(a, previous.atime, previous.mtime)
   const reopened = new DocumentIndex(cache)
   t.after(() => reopened.clear())
-  assert.equal(await reopened.load(root, [a]), false)
   await reopened.build(root, [a])
   assert.deepEqual(reopened.tags(), [{ tag: 'new', count: 1 }])
 })
@@ -79,9 +78,7 @@ test('cache validation detects files added, deleted or renamed while closed', as
   const b = await write('B.md', '# B\n')
   const reopened = new DocumentIndex(cache)
   t.after(() => reopened.clear())
-  assert.equal(await reopened.load(root, [a, b]), false)
   await fs.rename(a, path.join(root, 'Renamed.md'))
-  assert.equal(await reopened.load(root, [path.join(root, 'Renamed.md'), b]), false)
   await reopened.build(root, [path.join(root, 'Renamed.md'), b])
   assert.equal(reopened.resolve('A'), path.join(root, 'Renamed.md'), 'Existing title remains searchable after rename')
   assert.equal(reopened.resolve('Renamed'), path.join(root, 'Renamed.md'))
@@ -115,10 +112,10 @@ test('a cache from the previous index format is rejected and rebuilt', async t =
   await index.build(root, [a]); await index.flush()
   const raw = JSON.parse(await fs.readFile(cache, 'utf8')) as { version: number }
   raw.version = 2
+  ;(raw as any).entries[0].tags = ['stale-cache']
   await fs.writeFile(cache, JSON.stringify(raw))
   const reopened = new DocumentIndex(cache)
   t.after(() => reopened.clear())
-  assert.equal(await reopened.load(root, [a]), false, 'Old-format caches must force a full rescan')
   await reopened.build(root, [a])
   assert.deepEqual(reopened.tags(), [{ tag: 'legacy', count: 1 }])
 })
@@ -215,4 +212,29 @@ test('nested tags count unique documents; references resolve relative to source;
   const relation=await index.relations(target)
   assert.deepEqual(relation.backlinks.map(l=>l.path),[ref]); assert.match(relation.backlinks[0].context,/Target/)
   assert.deepEqual(relation.mentions.filter(l=>l.path===ref).map(l=>l.line),[2])
+})
+
+test('large-library backlinks need no corpus reads until the user requests unlinked mentions', async t => {
+  const { index, root, write } = await fixture(t)
+  const target = await write('Target.md', '# Target\n')
+  const source = await write('Source.md', '[[Target]]\nA plain Target mention.\n')
+  const other = await Promise.all(Array.from({ length: 198 }, (_, i) => write(`Note-${i}.md`, '# Independent note\n')))
+  await index.build(root, [target, source, ...other])
+  const readFile = fs.readFile
+  let reads = 0
+  fs.readFile = ((...args: Parameters<typeof fs.readFile>) => { reads++; return readFile(...args) }) as typeof fs.readFile
+  try {
+    const deferred = await index.relations(target)
+    assert.equal(reads, 0)
+    assert.equal(deferred.mentionsDeferred, true)
+    assert.deepEqual(deferred.backlinks.map(link => link.path), [source])
+    const requested = await index.relations(target, true)
+    assert.deepEqual(requested.mentions.map(link => [link.path, link.line]), [[source, 2]])
+    const controller = new AbortController()
+    const pending = index.relations(target, true, controller.signal)
+    controller.abort()
+    const started = reads
+    assert.deepEqual(await pending, { backlinks: [], mentions: [] })
+    assert.ok(reads <= started + 1, 'An aborted search may finish only its in-flight read')
+  } finally { fs.readFile = readFile }
 })

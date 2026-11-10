@@ -75,13 +75,13 @@ export function editProperties(text: string, changes: PropertyChange[]): string 
 }
 
 /** Mask non-prose without changing string offsets or source line numbers. */
+const proseParser = new MarkdownIt({ html: true })
 export function proseMask(text: string, links = true, header = true): string {
   let masked = text
   const blank = (s: string) => s.replace(/[^\r\n]/g, ' ')
   if (header) { try { const fm = frontmatter(text); if (fm.exists) masked = blank(text.slice(0, fm.end)) + text.slice(fm.end) } catch { /* invalid header stays text */ } }
   const env: { references?: Record<string, unknown> } = {}
-  const parser = new MarkdownIt({ html: true })
-  const tokens = parser.parse(masked, env)
+  const tokens = proseParser.parse(masked, env)
   const starts = [0]; for (let i=0; i<text.length; i++) if(text[i]==='\n') starts.push(i+1)
   for(const token of tokens) {
     if(token.map && ['fence','code_block','html_block'].includes(token.type)) { const from=starts[token.map[0]],to=starts[token.map[1]]??text.length; masked=masked.slice(0,from)+blank(masked.slice(from,to))+masked.slice(to) }
@@ -113,7 +113,7 @@ export function proseMask(text: string, links = true, header = true): string {
       for(;end<masked.length && depth;end++) { if(masked[end]==='\\') end++; else if(masked[end]==='(') depth++; else if(masked[end]===')') depth-- }
       if(depth) continue
     } else if(masked[end]==='[') { const e=masked.indexOf(']',end+1); if(e<0) continue; end=e+1 }
-    else if (!links || !env.references?.[parser.utils.normalizeReference(masked.slice(start+1,close))]) continue
+    else if (!links || !env.references?.[proseParser.utils.normalizeReference(masked.slice(start+1,close))]) continue
     for(let j=links?start:close+1;j<end;j++) if(chars[j]!=='\n' && chars[j]!=='\r') chars[j]=' '
     start=end-1
   }

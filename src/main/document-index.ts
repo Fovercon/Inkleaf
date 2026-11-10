@@ -3,6 +3,7 @@ import path from 'node:path'
 import { createHash } from 'node:crypto'
 import matter from 'gray-matter'
 import { proseMask } from '../shared/markdown-tools'
+import type { RelationResult } from '../shared/ipc'
 
 export interface IndexLink { target: string; line: number; context?: string }
 export interface DocIndexEntry {
@@ -40,7 +41,7 @@ export function parseFrontmatter(raw: string): { data: Record<string, unknown>; 
   } catch { return { data: {}, content: raw } }
 }
 
-function parseDoc(p: string, raw: string, mtime: number, size: number): DocIndexEntry {
+function parseDoc(p: string, raw: string, mtime: number, size: number, sha256: string): DocIndexEntry {
   const { data, content } = parseFrontmatter(raw), tags = new Set<string>()
   if (typeof data.tags === 'string') data.tags.split(/[，,\s]+/).filter(Boolean).forEach(t => tags.add(t))
   else if (Array.isArray(data.tags)) data.tags.forEach(t => { if (typeof t === 'string' && t.trim()) tags.add(t.trim()) })
@@ -51,7 +52,7 @@ function parseDoc(p: string, raw: string, mtime: number, size: number): DocIndex
     for(const match of line.matchAll(wikilink)) links.push({target:match[1].trim(),line:i+1,context:originalLines.slice(Math.max(0,i-1),i+2).join('\n').slice(0,500)})
   })
   return { path: p, title: typeof data.title === 'string' && data.title.trim() || /^#\s+(.+)$/m.exec(content)?.[1]?.trim() || basename(p), mtime, size,
-    sha256: hash(raw), tags: [...tags], links, frontmatter: data }
+    sha256, tags: [...tags], links, frontmatter: data }
 }
 
 /** A library generation cancels old scans; file revisions cancel stale reads. */
@@ -95,11 +96,15 @@ export class DocumentIndex {
   async build(root: string, files: string[]): Promise<void> {
     const generation = this.begin(root)
     this.files = new Set(files.filter(p => within(root, p) && extension.test(p)))
+    const cached = await this.readCache()
+    if (generation !== this.generation) return
     for (const p of this.files) {
+      // Watcher updates own files that changed while the cache was loading.
+      if (this.revisions.has(p)) continue
       const revision = this.revisions.get(p) ?? 0, doc = await this.readDocument(p)
       if (generation !== this.generation) return
       if ((this.revisions.get(p) ?? 0) !== revision) continue
-      if (doc) this.entries.set(p, parseDoc(p, doc.raw, doc.mtime, doc.size))
+      if (doc) this.storeDocument(p, doc, cached.get(p))
     }
     this.persistSoon()
   }
@@ -110,7 +115,7 @@ export class DocumentIndex {
     this.revisions.set(p, revision); this.files.add(p)
     const doc = await this.readDocument(p)
     if (generation !== this.generation || this.revisions.get(p) !== revision) return
-    if (doc) this.entries.set(p, parseDoc(p, doc.raw, doc.mtime, doc.size))
+    if (doc) this.storeDocument(p, doc, this.entries.get(p))
     else this.entries.delete(p)
     this.persistSoon()
   }
@@ -126,29 +131,29 @@ export class DocumentIndex {
     this.persistSoon()
   }
 
-  /** Validate the complete file set and contents, including changes while closed. */
-  async load(root: string, files: string[]): Promise<boolean> {
-    const generation = this.begin(root)
-    this.files = new Set(files.filter(p => within(root, p) && extension.test(p)))
+  private storeDocument(p: string, doc: { raw: string; mtime: number; size: number }, cached?: DocIndexEntry) {
+    // Digest validation also catches edits made with preserved timestamps.
+    const sha256 = hash(doc.raw)
+    this.entries.set(p, cached?.sha256 === sha256
+      ? { ...cached, mtime: doc.mtime, size: doc.size }
+      : parseDoc(p, doc.raw, doc.mtime, doc.size, sha256))
+  }
+
+  private async readCache(): Promise<Map<string, DocIndexEntry>> {
+    const loaded = new Map<string, DocIndexEntry>(), root = this.root
     try {
       const cached = JSON.parse(await fs.readFile(this.cacheFile, 'utf8')) as {
         version?: number; root?: string; entries?: DocIndexEntry[]
       }
-      if (generation !== this.generation || cached.version !== indexFormat || cached.root !== this.root || !Array.isArray(cached.entries)) return false
-      const loaded = new Map<string, DocIndexEntry>()
+      if (cached.version !== indexFormat || cached.root !== root || !Array.isArray(cached.entries)) return loaded
       for (const entry of cached.entries) {
         if (!entry || typeof entry.path !== 'string' || !this.files.has(entry.path) || loaded.has(entry.path)
           || typeof entry.title !== 'string' || !Array.isArray(entry.tags) || entry.tags.some(t => typeof t !== 'string')
-          || !Array.isArray(entry.links) || entry.links.some(l => !l || typeof l.target !== 'string' || !Number.isInteger(l.line))) return false
-        const doc = await this.readDocument(entry.path)
-        if (generation !== this.generation) return false
-        if (!doc || entry.sha256 !== hash(doc.raw)) return false
-        loaded.set(entry.path, { ...entry, mtime: doc.mtime, size: doc.size })
+          || !Array.isArray(entry.links) || entry.links.some(l => !l || typeof l.target !== 'string' || !Number.isInteger(l.line) || (l.context !== undefined && typeof l.context !== 'string'))) continue
+        loaded.set(entry.path, entry)
       }
-      if (loaded.size !== this.files.size || this.revisions.size || generation !== this.generation) return false
-      this.entries = loaded
-      return true
-    } catch { return false }
+    } catch { /* A missing or malformed cache is rebuilt in the same pass. */ }
+    return loaded
   }
 
   private persistSoon(): void {
@@ -212,16 +217,20 @@ export class DocumentIndex {
     return out
   }
 
-  async relations(target: string): Promise<{ backlinks: (Backlink & { context: string })[]; mentions: (Backlink & { context: string })[] }> {
+  async relations(target: string, scanMentions = false, signal?: AbortSignal): Promise<RelationResult> {
     const generation=this.generation, entry=this.entries.get(target)
     if(!entry) return {backlinks:[],mentions:[]}
     const backlinks=this.backlinks(target).map(link=>({...link,context:this.entries.get(link.path)?.links.find(l=>l.line===link.line)?.context??''}))
+    // Backlinks use the index. Unlinked mentions require reading the corpus.
+    if (!scanMentions && (this.files.size >= 200 || [...this.entries.values()].reduce((bytes, doc) => bytes + doc.size, 0) >= 16 * 1024 * 1024)) {
+      return { backlinks, mentions: [], mentionsDeferred: true }
+    }
     const names=[...new Set([basename(target),entry.title].filter(Boolean))], mentions: (Backlink & {context:string})[]=[]
     for(const doc of this.entries.values()) {
       if(doc.path===target) continue
       const loaded=await this.readDocument(doc.path)
-      if(generation!==this.generation) return {backlinks:[],mentions:[]}
-      if(!loaded) continue
+      if(generation!==this.generation || signal?.aborted) return {backlinks:[],mentions:[]}
+      if(!loaded || !names.some(name => loaded.raw.includes(name))) continue
       const lines=loaded.raw.split('\n')
       proseMask(loaded.raw).split('\n').forEach((line,i)=>{ if(names.some(n=>line.includes(n))) mentions.push({path:doc.path,line:i+1,context:lines.slice(Math.max(0,i-1),i+2).join('\n').slice(0,500)}) })
     }

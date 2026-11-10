@@ -1409,3 +1409,20 @@ body[data-theme="dark"] .selection-actions button:first-child, body[data-theme="
   #toolbar { min-width: 0; flex-shrink: 1; overflow-x: auto; scrollbar-width: none; }
   #toolbar > * { flex-shrink: 0; }
 }
+
+/* Reading layout controls share one height and a separate surface. */
+.knowledge-dialog.reading-settings { width: min(480px, calc(100vw - 32px)); background: var(--panel); }
+.reading-settings .tool-hint { margin: 0 0 16px; }
+.reading-settings .tool-field, .reading-caption { color: var(--text-dim); font-size: 13px; font-weight: 500; }
+.reading-settings .tool-field { margin: 12px 0; }
+.reading-settings select, .reading-settings input[type='range'], .reading-settings button { height: 36px; border-color: var(--border-strong); border-radius: 8px; padding: 0 12px; background: var(--bg); color: var(--text); }
+.reading-range { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.reading-range input { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+.reading-range output { font-size: 14px; font-weight: 600; color: var(--text); }
+.reading-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.reading-presets button[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.reading-settings .reading-reset { margin-right: auto; border-color: transparent; background: transparent; color: var(--text-dim); }
+.reading-settings .reading-done { min-width: 80px; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.reading-settings .reading-done:hover { background: color-mix(in srgb, var(--accent) 86%, var(--text)); color: #fff; }
+body[data-theme='dark'] .reading-settings .reading-done { color: var(--bg); }
+.reading-settings input:disabled { cursor: default; }

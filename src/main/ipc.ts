@@ -1,4 +1,4 @@
-import { app, ipcMain, dialog, BrowserWindow, shell, Menu } from 'electron'
+import { app, ipcMain, dialog, BrowserWindow, shell, Menu, type WebContents } from 'electron'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
 import path from 'node:path'
@@ -151,6 +151,8 @@ export async function stopWatch() {
 }
 
 export function registerIpc() {
+  let indexReady = Promise.resolve()
+  const relationScans = new WeakMap<WebContents, AbortController>()
   ipcMain.handle(CH.dialogOpenFolder, async () => {
     const r = await dialog.showOpenDialog({
       title: '选择 Markdown 书库文件夹',
@@ -204,21 +206,12 @@ export function registerIpc() {
         const generation = ++libraryGeneration
         fileListRevision++
         libraryRoot = root
-        fileListCache = null
-        indexService.clearIndex()
+        const paths = (nodes: TreeNode[]): string[] => nodes.flatMap(node => node.type === 'file' ? [node.path] : paths(node.children ?? []))
+        const files = paths(tree)
+        fileListCache = { root, generation, revision: fileListRevision, files }
+        indexReady = indexService.buildIndex(root, files).catch(() => {})
         localAssets.setLibraryRoot(root)
         void startWatch(root, generation).catch(() => {})
-        void (async () => {
-          let files = await listFiles(root)
-          if (generation !== libraryGeneration) return
-          const loaded = await indexService.loadPersistedIndex(root, files)
-          if (generation !== libraryGeneration) return
-          if (!loaded) {
-            files = await listFiles(root, true)
-            if (generation !== libraryGeneration) return
-            await indexService.buildIndex(root, files)
-          }
-        })().catch(() => {})
         return true
       })
       sessionWrites = transition.then(() => {}, () => {})
@@ -263,7 +256,22 @@ export function registerIpc() {
   })
   ipcMain.handle(CH.tagPreview, (_e, from, to) => knowledge.tagPreview(from, to))
   ipcMain.handle(CH.createDocument, (_e, relative, content, existing, from) => knowledge.create(relative, content, existing, from))
-  ipcMain.handle(CH.indexRelations, (_e, target) => indexService.queryRelations(target))
+  ipcMain.handle(CH.indexRelations, async (event, target: string | null, scanMentions?: boolean) => {
+    relationScans.get(event.sender)?.abort()
+    if (typeof target !== 'string') return { backlinks: [], mentions: [] }
+    const controller = new AbortController(), generation = libraryGeneration
+    relationScans.set(event.sender, controller)
+    const abort = () => controller.abort()
+    event.sender.once('destroyed', abort)
+    try {
+      await indexReady
+      if (controller.signal.aborted || generation !== libraryGeneration) return { backlinks: [], mentions: [] }
+      return await indexService.queryRelations(target, scanMentions === true, controller.signal)
+    } finally {
+      event.sender.removeListener('destroyed', abort)
+      if (relationScans.get(event.sender) === controller) relationScans.delete(event.sender)
+    }
+  })
   ipcMain.handle(CH.advancedSearch, (_e, options) => knowledge.search(options))
   ipcMain.handle(CH.replacePreview, (_e, options, replacement) => knowledge.preview(options, replacement))
   ipcMain.handle(CH.batchApply, (_e, id, paths) => knowledge.apply(id, paths))
