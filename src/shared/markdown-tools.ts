@@ -83,9 +83,16 @@ export function proseMask(text: string, links = true, header = true): string {
   const env: { references?: Record<string, unknown> } = {}
   const tokens = proseParser.parse(masked, env)
   const starts = [0]; for (let i=0; i<text.length; i++) if(text[i]==='\n') starts.push(i+1)
-  for(const token of tokens) {
-    if(token.map && ['fence','code_block','html_block'].includes(token.type)) { const from=starts[token.map[0]],to=starts[token.map[1]]??text.length; masked=masked.slice(0,from)+blank(masked.slice(from,to))+masked.slice(to) }
+  const blocks: string[] = []
+  let offset = 0
+  for (const token of tokens) {
+    if (!token.map || !['fence', 'code_block', 'html_block'].includes(token.type)) continue
+    const from = Math.max(offset, starts[token.map[0]]), to = starts[token.map[1]] ?? text.length
+    if (to <= from) continue
+    blocks.push(masked.slice(offset, from), blank(masked.slice(from, to)))
+    offset = to
   }
+  if (offset) masked = blocks.join('') + masked.slice(offset)
   let fence = '', fenceSize = 0
   masked = masked.replace(/[^\n]*(?:\n|$)/g, line => {
     const m = /^ {0,3}(`{3,}|~{3,})/.exec(line)

@@ -45,12 +45,18 @@ function parseDoc(p: string, raw: string, mtime: number, size: number, sha256: s
   const { data, content } = parseFrontmatter(raw), tags = new Set<string>()
   if (typeof data.tags === 'string') data.tags.split(/[，,\s]+/).filter(Boolean).forEach(t => tags.add(t))
   else if (Array.isArray(data.tags)) data.tags.forEach(t => { if (typeof t === 'string' && t.trim()) tags.add(t.trim()) })
-  for (const match of proseMask(raw).matchAll(bodyTag)) tags.add(match[1])
+  if (/#\p{L}/u.test(raw)) {
+    for (const match of proseMask(raw).matchAll(bodyTag)) tags.add(match[1])
+  }
   const links: IndexLink[] = []
-  const originalLines=raw.split('\n')
-  proseMask(raw,false).split('\n').forEach((line,i)=> {
-    for(const match of line.matchAll(wikilink)) links.push({target:match[1].trim(),line:i+1,context:originalLines.slice(Math.max(0,i-1),i+2).join('\n').slice(0,500)})
-  })
+  if (raw.includes('[[')) {
+    const originalLines = raw.split('\n')
+    proseMask(raw, false).split('\n').forEach((line, i) => {
+      for (const match of line.matchAll(wikilink)) {
+        links.push({ target: match[1].trim(), line: i + 1, context: originalLines.slice(Math.max(0, i - 1), i + 2).join('\n').slice(0, 500) })
+      }
+    })
+  }
   return { path: p, title: typeof data.title === 'string' && data.title.trim() || /^#\s+(.+)$/m.exec(content)?.[1]?.trim() || basename(p), mtime, size,
     sha256, tags: [...tags], links, frontmatter: data }
 }
