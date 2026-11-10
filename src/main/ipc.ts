@@ -206,12 +206,16 @@ export function registerIpc() {
         const generation = ++libraryGeneration
         fileListRevision++
         libraryRoot = root
-        const paths = (nodes: TreeNode[]): string[] => nodes.flatMap(node => node.type === 'file' ? [node.path] : paths(node.children ?? []))
-        const files = paths(tree)
-        fileListCache = { root, generation, revision: fileListRevision, files }
-        indexReady = indexService.buildIndex(root, files).catch(() => {})
+        fileListCache = null
+        indexService.clearIndex()
         localAssets.setLibraryRoot(root)
         void startWatch(root, generation).catch(() => {})
+        indexReady = (async () => {
+          // The file list is taken after committing the session so it includes
+          // additions made while the tree or session was being prepared.
+          const files = await listFiles(root)
+          if (generation === libraryGeneration) await indexService.buildIndex(root, files)
+        })().catch(() => {})
         return true
       })
       sessionWrites = transition.then(() => {}, () => {})
